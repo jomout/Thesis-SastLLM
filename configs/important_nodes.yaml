@@ -1,0 +1,177 @@
+asm:
+  function: Function
+  label: Label
+
+c:
+  translation_unit: Translation Unit
+  function_definition: Function
+  union_specifier: Union
+  struct_specifier: Struct
+  enum_specifier: Enum
+  preproc_include: Include
+  preproc_if: Ifdef
+  preproc_ifdef: Ifdef
+  preproc_ifndef: Ifdef
+  preproc_def: Define
+  preproc_defined: Macro
+
+cpp:
+  translation_unit: Translation Unit
+  function_definition: Function
+  class_specifier: Class
+  struct_specifier: Struct
+  namespace_definition: Namespace
+  template_declaration: Template
+  type_definition: Typedef
+  preproc_include: Include
+  preproc_if: Ifdef
+  preproc_ifdef: Ifdef
+  preproc_ifndef: Ifdef
+  preproc_def: Define
+  preproc_defined: Macro
+
+c_sharp:
+  method_declaration: Method
+  class_declaration: Class
+  enum_declaration: Enum
+  struct_declaration: Struct
+  namespace_declaration: Namespace
+  template_declaration: Template
+  preproc_define: Macro
+
+java:
+  package_declaration: Package
+  import_declaration: Import
+  class_declaration: Class
+  interface_declaration: Interface
+  enum_declaration: Enum
+  annotation_type_declaration: Annotation
+  method_declaration: Method
+  constructor_declaration: Constructor
+
+javascript:
+  import_statement: Import
+  export_statement: Export
+  class_declaration: Class
+  function_declaration: Function
+  arrow_function: Arrow Function
+  statement_block: Block
+
+typescript:
+  import_statement: Import
+  export_statement: Export
+  class_declaration: Class
+  function_declaration: Function
+  arrow_function: Arrow Function
+  statement_block: Block
+  interface_declaration: Interface
+  type_alias_declaration: Type Alias
+
+tsx:
+  import_statement: Import
+  export_statement: Export
+  class_declaration: Class
+  function_declaration: Function
+  arrow_function: Arrow Function
+  statement_block: Block
+  interface_declaration: Interface
+  type_alias_declaration: Type Alias
+
+python:
+  import_statement: Import
+  export_statement: Export
+  class_definition: Class
+  function_definition: Function
+
+ruby:
+  class: Class
+  method: Method
+  module: Module
+  singleton_class: Singleton Class
+  singleton_method: Singleton Method
+  begin: Begin Block
+
+go:
+  import_declaration: Import
+  function_declaration: Function
+  method_declaration: Method
+  type_declaration: Type
+  struct_type: Struct
+  interface_type: Interface
+  package_clause: Package
+
+php:
+  namespace_definition: Namespace
+  class_declaration: Class
+  method_declaration: Method
+  function_definition: Function
+  interface_declaration: Interface
+  trait_declaration: Trait
+
+perl:
+  package: Package
+  subroutine_definition: Function
+
+cuda:
+  function_definition: Function
+  class_specifier: Class
+  struct_specifier: Struct
+  namespace_definition: Namespace
+  template_declaration: Template
+  type_definition: Typedef
+  preproc_include: Include
+  preproc_define: Macro
+
+html:
+  element: Element
+  script_element: Script
+  style_element: Style
+
+pascal:
+  declClass: Class
+  declHelper: Helper
+  declIntf: Interface
+  declSection: Section
+  declUses: Uses
+  declProc: Procedure
+  defProc: Defined Procedure
+  declProcRef: Procedure Reference
+  asm : Assembly
+
+powershell:
+  function_statement: Function
+  class_statement: Class
+  enum_statement: Enum
+
+bash:
+  function_definition: Function
+
+rust:
+  function_item: Function
+  struct_item: Struct
+  enum_item: Enum
+  trait_item: Trait
+  impl_item: Impl
+  mod_item: Module
+
+swift:
+  function_declaration: Function
+  class_declaration: Class
+  protocol_declaration: Protocol
+  subscript_declaration: Subscript
+
+
+css:
+  tag_name: Tag
+  "@media": Media Query
+
+vb_dotnet:
+  structure_block: Structure
+  method_declaration: Method
+  constructor_declaration: Constructor
+  class_block: Class
+  module_block: Module
+  interface_block: Interface
+  property_declaration: Property
+  event_declaration: Event
+  namespace_block: Namespace

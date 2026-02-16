@@ -1,0 +1,7 @@
+{
+  "saved_at": "2026-02-07T16:26:32.663737+00:00",
+  "source": "./tb_logs/repo_classifier/version_218/checkpoints/epoch04-val_acc0.9709.ckpt",
+  "source_type": "best",
+  "monitor": "val_acc",
+  "monitor_mode": "max"
+}

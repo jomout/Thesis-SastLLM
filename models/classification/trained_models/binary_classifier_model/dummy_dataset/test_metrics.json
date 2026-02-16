@@ -1,0 +1,84 @@
+{
+    "accuracy": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "macro_f1": 1.0,
+    "weighted_precision": 1.0,
+    "weighted_recall": 1.0,
+    "weighted_f1": 1.0,
+    "per_class": {
+        "benign": {
+            "support": 5,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 5,
+            "fp": 0,
+            "fn": 0
+        },
+        "malicious": {
+            "support": 8,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 8,
+            "fp": 0,
+            "fn": 0
+        }
+    },
+    "confusion_matrix": [
+        [
+            5,
+            0
+        ],
+        [
+            0,
+            8
+        ]
+    ],
+    "auc_macro": 1.0,
+    "auc_weighted": 1.0,
+    "auc_per_class": {
+        "benign": 1.0,
+        "malicious": 1.0
+    },
+    "roc_curves": {
+        "benign": {
+            "fpr": [
+                0.0,
+                0.0,
+                0.125,
+                1.0
+            ],
+            "tpr": [
+                0.0,
+                1.0,
+                1.0,
+                1.0
+            ],
+            "thresholds": [
+                Infinity,
+                1.0,
+                4.172325134277344e-07,
+                0.0
+            ]
+        },
+        "malicious": {
+            "fpr": [
+                0.0,
+                0.0,
+                1.0
+            ],
+            "tpr": [
+                0.0,
+                1.0,
+                1.0
+            ],
+            "thresholds": [
+                Infinity,
+                1.0,
+                0.0
+            ]
+        }
+    }
+}

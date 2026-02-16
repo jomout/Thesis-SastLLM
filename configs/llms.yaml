@@ -1,0 +1,12 @@
+app:
+  name: sastllm
+
+models:
+  snippet_processor:
+    host: "google"
+    name: "gemini-2.5-flash"
+    params:
+      temperature: 0
+      max_tokens: null
+      timeout: null
+      max_retries: 5

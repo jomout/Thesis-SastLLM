@@ -1,0 +1,10 @@
+app:
+  name: sastllm
+
+log:
+  level: INFO
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  file: logs/sastllm.log
+
+paths:
+  dataset: "../test_pipeline/test_dataset"

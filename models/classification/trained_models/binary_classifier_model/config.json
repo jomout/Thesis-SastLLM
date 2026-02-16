@@ -1,0 +1,9 @@
+{
+  "batch_size": 16,
+  "epochs": 30,
+  "lr": 0.0005,
+  "weight_decay": 0.001,
+  "l1_lambda": 0.001,
+  "seed": 42,
+  "k": 10661
+}

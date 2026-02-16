@@ -1,0 +1,11 @@
+split:
+  model_name: "sentence-transformers/all-mpnet-base-v2"
+  training:
+    ratio: 0.0
+
+  testing:
+    ratio: 1.0
+
+  binary_labels:
+    - 0: "benign"
+    - 1: "malicious"

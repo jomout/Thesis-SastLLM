@@ -1,0 +1,70 @@
+asm:
+  comment: Comment
+
+c:
+  comment: Comment
+
+cpp:
+  comment: Comment
+
+c_sharp:
+  comment: Comment
+
+java:
+  comment: Comment
+
+javascript:
+  comment: Comment
+  decorator: Decorator
+
+typescript:
+  comment: Comment
+  decorator: Decorator
+
+tsx:
+  comment: Comment
+  decorator: Decorator
+
+python:
+  comment: Comment
+  decorator: Decorator
+
+ruby:
+  comment: Comment
+
+go:
+  comment: Comment
+
+php:
+  comment: Comment
+  attribute: Attribute
+
+perl:
+  comment: Comment
+
+cuda:
+  comment: Comment
+
+html:
+  comment: Comment
+
+pascal:
+  comment: Comment
+
+powershell:
+  comment: Comment
+
+bash:
+  comment: Comment
+
+rust:
+  comment: Comment
+
+swift:
+  comment: Comment
+
+css:
+  comment: Comment
+
+vb_dotnet:
+  comment: Comment

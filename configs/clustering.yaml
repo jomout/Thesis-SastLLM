@@ -1,0 +1,14 @@
+clustering:
+  search:
+    grid_search: [1908726]
+    save_model_dir: "models/clustering/searching_models"
+    save_plots_dir: "plots/clustering/searching"
+    random_state: 42
+
+  train:
+    k: 10661
+    save_model_dir: "models/clustering/trained_models"
+
+  test:
+    k: 10661
+    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"

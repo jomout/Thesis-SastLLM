@@ -1,0 +1,22 @@
+classification:
+
+  train:
+    save_model_dir: "models/classification/trained_models"
+    params:
+      k: 10661
+      lr: 0.0005
+      weight_decay: 0.001
+      l1_param: 0.001
+      epochs: 30
+      batch_size: 16
+      seed: 42
+
+  test:
+    load_model_dir: "models/classification/trained_models/binary_classifier_model"
+    params:
+      k: 10661
+      lr: 0.0005
+      weight_decay: 0.001
+      l1_param: 0.001
+      batch_size: 16
+      seed: 42

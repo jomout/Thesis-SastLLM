@@ -1,0 +1,6 @@
+{
+  "explained_class": "malicious",
+  "class_index": 1,
+  "top_k": 30,
+  "checkpoint": "models/classification/trained_models/best_binary_model"
+}
