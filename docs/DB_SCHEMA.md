@@ -1,68 +1,192 @@
-# Database schema
+# Database Schema
 
-The project uses SQLAlchemy ORM with a Postgres backend. Tables are created automatically on first use.
+This project uses a **PostgreSQL** database to store and process repository-level intelligence.
+The schema is designed as a hierarchical pipeline:
+
+    ```
+    repositories → files → snippets → functionalities
+    ```
+
+Each level represents a finer granularity of code analysis.
+
+---
+
+## Global Conventions
+
+* All tables include:
+
+  * `created_at`: timestamp of insertion
+  * `updated_at`: auto-updated timestamp via trigger
+* `processed` flags are used to track pipeline progress
+* Cascading deletes ensure referential integrity
+
+---
+
+## Trigger: `set_updated_at`
+
+Automatically updates `updated_at` on row modification.
+
+* Applied via `BEFORE UPDATE` triggers on all tables
+* Uses `clock_timestamp()` for precise timing
+
+---
 
 ## Entities
 
-- `repositories`
-  - `repository_id` (PK)
-  - `name` (unique)
-  - `label` (nullable): ground-truth class e.g., `malware` or `benignware`
+### `repositories`
 
-- `files`
-  - `file_id` (PK)
-  - `repository_id` (FK → repositories)
-  - `language` (e.g., `py`, `cpp`)
-  - `filename`
-  - `filepath` (path relative to dataset root)
+Represents a source code repository (e.g., a GitHub repo).
 
-- `snippets`
-  - `snippet_id` (PK)
-  - `file_id` (FK → files)
-  - `start_line`, `end_line`
-  - `code` (text)
+**Fields:**
 
-- `functionalities`
-  - `functionality_id` (PK)
-  - `snippet_id` (FK → snippets)
-  - `description` (raw LLM output sentence)
-  - `tag` (normalized description)
-  - `cluster_id` (nullable FK → clusters)
+* `repository_id` (PK)
+* `name` (unique, required): repository identifier
+* `label` (nullable): ground-truth classification (e.g., `malware`, `benignware`)
+* `processed` (boolean): whether repository-level processing is complete
+* `split` (nullable): dataset split (`train`, `val`, `test`)
+* `created_at`, `updated_at`
 
-- `clusters`
-  - `cluster_id` (PK)
-  - `label` (nullable; LLM pseudolabel)
+**Notes:**
 
-- `csn_snippets` (evaluation)
-  - `csn_snippet_id` (PK)
-  - `repository`, `filepath`
-  - `start_line`, `end_line`
-  - `code`
-  - `functionality` (CSN docstring)
+* Top-level entity in the pipeline
+* Used for ML dataset partitioning and evaluation
 
-## Useful streaming queries
+---
 
-- `get_snippets_with_file_meta()` → for snippet LLM stage
-- `get_functionalities()` → to fetch all tags for clustering
-- `get_clusters_with_tags()` → for cluster pseudolabel stage
-- `get_files_with_labels()` → for file-level flagging
-- `get_repositories_with_labels()` → for repository ground-truth labels
-- `get_repositories_with_cluster_ids()` → for ML classification features
+### `files`
 
-## Suggested prediction tables (future)
+Represents individual files within a repository.
 
-Add persistent results for LLM/ML classification:
+**Fields:**
 
-- `repository_predictions`
-  - `id` (PK)
-  - `repository_id` (FK → repositories)
-  - `classification` (text: `malware`/`benignware`)
-  - `probabilities_json` (jsonb; optional per-class probabilities or scores)
-  - `created_at` (timestamp)
+* `file_id` (PK)
+* `repository_id` (FK → repositories, cascade delete)
+* `language` (required): programming language (e.g., `py`, `cpp`)
+* `filename`
+* `filepath`: relative path inside repository
+* `processed` (boolean): whether file has been analyzed
+* `created_at`, `updated_at`
 
-- `file_flags`
-  - `id` (PK)
-  - `file_id` (FK → files)
-  - `flags_json` (jsonb)
-  - `justification` (text)
-  - `created_at` (timestamp)
+**Indexes:**
+
+* `idx_files_repository_id`
+* `idx_files_repo_processed (repository_id, processed)`
+
+**Notes:**
+
+* Enables filtering by language and processing status
+* Core unit for file-level analysis
+
+---
+
+### `snippets`
+
+Represents extracted code segments from files.
+
+**Fields:**
+
+* `snippet_id` (PK)
+* `file_id` (FK → files, cascade delete)
+* `start_line`, `end_line`: location in file
+* `code`: raw code snippet
+* `processed` (boolean): whether snippet has been analyzed by LLM
+* `created_at`, `updated_at`
+
+**Indexes:**
+
+* `idx_snippets_file_id`
+* `idx_snippets_processed`
+* `idx_snippets_file_id_processed (file_id, processed)`
+
+**Notes:**
+
+* Main unit for LLM-based code understanding
+* Supports incremental processing via `processed` flag
+
+---
+
+### `functionalities`
+
+Represents semantic descriptions extracted from snippets.
+
+**Fields:**
+
+* `functionality_id` (PK)
+* `snippet_id` (FK → snippets, cascade delete)
+* `description`: raw natural language output (e.g., LLM-generated)
+* `tag`: normalized/cleaned functionality label
+* `cluster_id` (nullable): grouping identifier for similar functionalities
+* `created_at`, `updated_at`
+
+**Indexes:**
+
+* `idx_functionalities_snippet_id`
+* `idx_functionalities_cluster_id`
+* `idx_functionalities_tag`
+
+**Notes:**
+
+* Bridges code → semantics
+* `tag` is used for downstream clustering and ML features
+* `cluster_id` is optional and can be assigned post-processing
+
+---
+
+## Data Flow
+
+1. **Repositories ingested**
+2. Files extracted and stored in `files`
+3. Files split into `snippets`
+4. Snippets analyzed → `functionalities`
+5. Functionalities optionally clustered via `cluster_id`
+
+---
+
+## Design Highlights
+
+* **Pipeline-friendly:** `processed` flags allow resumable workflows
+* **Efficient queries:** composite indexes support fast filtering
+* **Cascade deletes:** deleting a repository removes all dependent data
+* **Extensible:** `functionalities.cluster_id` enables future clustering without schema changes
+
+---
+
+## Future Extensions (Suggested)
+
+### `clusters` (optional)
+
+If clustering becomes a first-class concept:
+
+* `cluster_id` (PK)
+* `label` (optional human-readable label)
+
+---
+
+### Prediction Tables
+
+#### `repository_predictions`
+
+* `id` (PK)
+* `repository_id` (FK)
+* `classification`
+* `probabilities_json` (jsonb)
+* `created_at`
+
+#### `file_flags`
+
+* `id` (PK)
+* `file_id` (FK)
+* `flags_json` (jsonb)
+* `justification`
+* `created_at`
+
+---
+
+## Summary
+
+The schema is designed for **multi-stage code intelligence processing**, enabling:
+
+* Fine-grained code analysis (snippet level)
+* Semantic understanding (functionality extraction)
+* Scalable ML pipelines (via tags and clusters)
+* Efficient incremental processing

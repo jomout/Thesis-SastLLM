@@ -1,76 +1,345 @@
 # Usage
 
-This document explains common CLI flows provided by `scripts/cli.py`.
+This document describes the command-line interface of the **SAST-LLM** framework and the recommended execution flows used in the thesis experiments.
 
 ## CLI overview
 
-```zsh
+Display the available commands and options:
+
+```bash
 sastllm --help
 ```
 
-Commands:
+The CLI initializes the project environment on startup by:
 
-- `setup`        → Load dataset into DB (repositories/files/snippets)
-- `train`        → Generate snippet functionalities (LLM) and cluster tags
-- `classify`     → Classify repositories via ML
-- `eval`         → Evaluate using CodeSearchNet (CSN)
-- `clear`        → Clear the database tables
-- `setup_eval`   → Download CSN split and insert into DB
+- loading environment variables from `.env`
+- configuring application logging
+- preparing the runtime for pipeline execution
 
-## Typical workflows
+## Available commands
 
-### 1) End-to-end pipeline (ML classification)
+### Dataset preparation
 
-```zsh
-# 1) Insert dataset into DB
-sastllm setup
+#### `download_benign_dataset`
 
-# 2) Generate snippet functionalities via LLM
+Downloads the benign dataset used in the experiments.
+
+```bash
+sastllm download_benign_dataset
+```
+
+This command downloads the **CodeSearchNet** dataset and stores it in the configured local dataset directory.
+
+---
+
+#### `load`
+
+Loads the local dataset into the database.
+
+```bash
+sastllm load
+```
+
+This command parses the local repository dataset and inserts the corresponding records into the database, including repository-level and snippet-level information.
+
+---
+
+#### `split`
+
+Splits the dataset into the required subsets.
+
+```bash
+sastllm split
+```
+
+This command performs dataset splitting for the experimental pipeline, typically producing the training, validation, and test partitions required by later stages.
+
+---
+
+### Functionality generation
+
+#### `generate_functionalities`
+
+Generates functionality descriptions for code snippets using the configured LLM.
+
+```bash
+sastllm generate_functionalities
+```
+
+This command processes code snippets stored in the database and produces short functionality descriptions that are later used for semantic clustering.
+
+---
+
+#### `generate_functionalities_batch_api`
+
+Generates functionality descriptions using the OpenAI Batch API.
+
+```bash
+sastllm generate_functionalities_batch_api
+```
+
+This command is intended for larger-scale functionality generation. It prepares batch requests, submits them to the API, and processes the returned outputs back into the local pipeline.
+
+---
+
+#### `load_cache_functionalities`
+
+Loads previously generated functionality descriptions from a local directory.
+
+```bash
+sastllm load_cache_functionalities /path/to/cached_functionalities
+```
+
+Use this command when functionality descriptions have already been generated and stored externally, and should be imported without repeating the LLM inference step.
+
+---
+
+### Clustering
+
+#### `cluster`
+
+Clusters the generated functionality descriptions.
+
+```bash
+sastllm cluster --mode train
+```
+
+Available modes:
+
+- `train`
+- `test`
+- `search`
+
+Examples:
+
+```bash
+sastllm cluster --mode train
+sastllm cluster --mode test
+sastllm cluster --mode search
+```
+
+The selected mode determines which subset or operational scenario is used during clustering.
+
+---
+
+### Classification
+
+#### `classify`
+
+Runs the repository classification stage.
+
+```bash
+sastllm classify --mode train
+```
+
+Available modes:
+
+- `train`
+- `test`
+
+Examples:
+
+```bash
+sastllm classify --mode train
+sastllm classify --mode test
+```
+
+This command performs repository-level classification based on the functionality-cluster representation produced by the previous stages.
+
+---
+
+### End-to-end pipelines
+
+#### `train`
+
+Runs the full training pipeline.
+
+```bash
 sastllm train
-
-# 3) Classify repositories via ML
-sastllm classify
-
-# Output: ML model logs under models/ and classification results reported by the CLI
 ```
 
-### 2) End-to-end with ML classification
+This command executes the training-stage pipeline as defined in the project implementation.
 
-```zsh
-sastllm setup
+---
+
+#### `test`
+
+Runs the full testing pipeline.
+
+```bash
+sastllm test
+```
+
+This command executes the testing-stage pipeline as defined in the project implementation.
+
+---
+
+## Recommended execution flows
+
+## 1. Full experimental pipeline from raw dataset
+
+This is the standard workflow when starting from the repository dataset.
+
+```bash
+# 1. Download benign repositories if needed
+sastllm download_benign_dataset
+
+# 2. Load the dataset into the database
+sastllm load
+
+# 3. Split the dataset
+sastllm split
+
+# 4. Generate snippet-level functionality descriptions
+sastllm generate_functionalities
+# or, for large-scale generation:
+# sastllm generate_functionalities_batch_api
+
+# 5. Cluster functionality descriptions
+sastllm cluster --mode train
+
+# 6. Train the classification stage
+sastllm classify --mode train
+
+# 7. Evaluate on the test split
+sastllm cluster --mode test
+sastllm classify --mode test
+```
+
+This workflow corresponds to the main thesis pipeline:
+
+1. dataset ingestion  
+2. dataset splitting  
+3. functionality generation  
+4. semantic clustering  
+5. repository-level classification  
+
+---
+
+## 2. Training and testing through the pipeline wrappers
+
+If the project configuration already encapsulates the individual stages, the higher-level commands may be used instead.
+
+```bash
 sastllm train
-sastllm classify_1
+sastllm test
 ```
 
-Notes:
+This is the most compact way to reproduce the predefined training and testing workflows implemented in the codebase.
 
-- The ML classifier path is the supported route. Ensure clustering completed before running classification.
+---
 
-### 3) Evaluation with CodeSearchNet
+## 3. Reusing cached functionality descriptions
 
-```zsh
-# Download CSN split and insert into DB tables
-sastllm setup_eval
+If functionality descriptions have already been generated in a previous run, they can be reloaded directly.
 
-# Compare your snippet functionalities with CSN docstrings (prints similarities)
-sastllm eval
+```bash
+sastllm load_cache_functionalities /path/to/cached_functionalities
+sastllm cluster --mode train
+sastllm classify --mode train
 ```
 
-## Data layout expectations
+This avoids repeating the LLM generation stage and is useful for reproducibility experiments or repeated clustering and classification trials.
 
-Your dataset root (from `configs/base.yaml: paths.database_dir`) should look like:
+---
+
+## Example command sequence used in practice
+
+A typical sequence for a complete experiment is the following:
+
+```bash
+sastllm load
+sastllm split
+sastllm generate_functionalities
+sastllm cluster --mode train
+sastllm classify --mode train
+sastllm cluster --mode test
+sastllm classify --mode test
+```
+
+If batch-based functionality generation is preferred:
+
+```bash
+sastllm load
+sastllm split
+sastllm generate_functionalities_batch_api
+sastllm cluster --mode train
+sastllm classify --mode train
+sastllm cluster --mode test
+sastllm classify --mode test
+```
+
+## Input and data assumptions
+
+The CLI assumes that:
+
+- the local dataset paths are correctly configured in the project configuration files
+- the required database is accessible
+- the `.env` file contains the necessary environment variables
+- snippet extraction and repository loading are supported by the dataset format used in the thesis experiments
+
+A typical dataset structure is expected to follow a repository-based organization such as:
 
 ```text
-/path/to/dataset/
+dataset/
   malware/
-    repo1/
-      <source files>
-  benignware/
-    repoA/
-      <source files>
+    repo_1/
+    repo_2/
+    ...
+  benign/
+    repo_a/
+    repo_b/
+    ...
 ```
+
+The exact paths are determined by the project configuration.
 
 ## Logging
 
-Logs are configured via `configs/base.yaml` and written to `logs/sastllm.log`.
-Set the log level and format there. Console logs are always enabled.
+Logging is initialized automatically when the CLI starts.
+
+Logs provide visibility into:
+
+- project initialization
+- dataset loading
+- functionality generation
+- clustering
+- classification
+- training and testing pipelines
+
+The logger used by the CLI is obtained through the project logging utilities:
+
+- `setup_logging()`
+- `get_logger(__name__)`
+
+## Notes for thesis usage
+
+For the purposes of the thesis, the commands can be grouped into the following conceptual stages:
+
+| Thesis Stage | CLI Commands |
+| --- | --- |
+| Dataset acquisition | `download_benign_dataset` |
+| Dataset ingestion | `load` |
+| Dataset partitioning | `split` |
+| Functionality extraction | `generate_functionalities`, `generate_functionalities_batch_api`, `load_cache_functionalities` |
+| Semantic clustering | `cluster --mode ...` |
+| Repository classification | `classify --mode ...` |
+| Wrapped execution | `train`, `test` |
+
+## Minimal command reference
+
+```bash
+sastllm download_benign_dataset
+sastllm load
+sastllm split
+sastllm generate_functionalities
+sastllm generate_functionalities_batch_api
+sastllm load_cache_functionalities /path/to/dir
+sastllm cluster --mode train
+sastllm cluster --mode test
+sastllm cluster --mode search
+sastllm classify --mode train
+sastllm classify --mode test
+sastllm train
+sastllm test
+```

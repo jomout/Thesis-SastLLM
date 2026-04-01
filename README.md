@@ -1,173 +1,351 @@
 # SASTLLM
 
-LLM-powered static analysis for malware detection. This project ingests source repositories (malware and benignware), chunks files into code snippets, uses an LLM to describe snippet functionality, clusters those functionalities, and classifies repositories using an ML model.
+**SASTLLM** is a static malware analysis framework that transforms source code repositories into **semantic functionality representations** and classifies repositories based on their behavioral profile.
 
-Use this README for a quick overview and getting started. For deeper topics, see the docs:
+At a high level, the framework:
 
-- docs/SETUP.md – Environment, installation, and Postgres
-- docs/USAGE.md – CLI commands and typical workflows
-- docs/CONFIG.md – YAML configuration (base, llms, classification)
-- docs/PIPELINE.md – End-to-end pipeline, prompts, and processors
-- docs/DB_SCHEMA.md – Database models and relationships
-- docs/TROUBLESHOOTING.md – Common issues and fixes
+1. ingests source repositories
+2. splits source files into code snippets
+3. generates functionality descriptions for each snippet with an LLM
+4. clusters semantically similar functionalities
+5. builds repository-level vectors from functionality clusters
+6. performs repository classification
 
-## Highlights
+This README provides the central overview of the project. More detailed documentation is available in the `docs/` directory.
 
-- Multi-language chunking via Tree-sitter with token-budget aware segmentation
-- Snippet functionality extraction via LLM with AST-augmented prompts
-- Vector embeddings, PCA, and clustering for functionality tags
-- Classification:
-  - ML: Per-repo cluster histograms encoded to features → MLP
-- Postgres-backed storage for repositories, files, snippets, functionalities, clusters
+## Documentation
 
-## Architecture (high level)
+- `docs/SETUP.md` – environment setup, installation, and dependencies
+- `docs/USAGE.md` – CLI commands and execution workflows
+- `docs/CONFIG.md` – YAML configuration files and their roles
+- `docs/PIPELINE.md` – end-to-end pipeline and phase descriptions
+- `docs/DB_SCHEMA.md` – database schema and model relationships
+
+---
+
+## Core idea
+
+Instead of classifying repositories directly from raw source code, SASTLLM first maps code into an intermediate semantic space.
+
+More specifically:
+
+- source files are decomposed into smaller code snippets
+- each snippet is translated into a short functionality-oriented natural language description
+- these functionality descriptions are embedded and clustered
+- each repository is represented through the distribution of its functionality clusters
+- classification is performed on top of that repository-level behavioral vector
+
+This makes the pipeline more structured and more interpretable than a direct raw-code classification approach.
+
+---
+
+## High-level pipeline
+
+The current pipeline is organized into four phases:
+
+1. **Preprocessing and Chunking**
+2. **Functionality Generation**
+3. **Functionality Clustering**
+4. **Repository Classification**
 
 ```text
-Local Dataset (malware/, benignware/)
-  |
-  v
-CodeProcessor (parsers/chunker)  -> DB: repositories, files, snippets
-  |
-  v
-SnippetProcessor (LLM prompt -> extract -> normalize)
-  -> DB: functionalities(description, tag)
-  |
-  v
-TagProcessor (embeddings -> PCA -> HDBSCAN+KMeans)
-  -> DB: clusters + functionality.cluster_id
-  |
-  +--> ClusterProcessor (LLM pseudolabels for clusters) -> DB: clusters.label
-  |
-  v
-Classification
-  - ML: RepositoryEncoder -> MLP (Lightning)
+Codebase
+  -> Phase 1: Preprocessing and Chunking
+      -> Repository files
+      -> Code snippets
+  -> Phase 2: Functionality Generation
+      -> LLM
+      -> NLP
+      -> Code snippet functionalities
+  -> Phase 3: Functionality Clustering
+      -> Embeddings
+      -> Clustering
+      -> Functionality clusters
+  -> Phase 4: Repository Classification
+      -> Vectorization
+      -> Repository vector
+      -> Classification
 ```
+
+For the full explanation and the updated diagram, see `docs/PIPELINE.md`.
+
+---
+
+## Main features
+
+- multi-stage malware analysis pipeline based on semantic functionality extraction
+- code chunking and snippet-based processing
+- LLM-driven functionality generation for code snippets
+- embedding-based functionality clustering
+- repository-level vectorization based on clustered functionality patterns
+- train/test execution modes for clustering and classification
+- YAML-based modular configuration
+- support for multiple programming languages through language-specific parsing configuration
+
+---
+
+## Project structure
+
+The exact repository structure may evolve, but the project is conceptually organized around the following components:
+
+- **CLI layer** for running the pipeline
+- **configuration files** under `configs/`
+- **dataset ingestion and preprocessing**
+- **functionality generation**
+- **clustering**
+- **classification**
+- **database-backed or pipeline-backed intermediate processing**, depending on the execution flow implemented in the codebase
+
+---
 
 ## Quickstart
 
-Prerequisites:
+## Prerequisites
 
-- Linux, Python 3.12+
-- Docker (for Postgres)
+- Python 3.12+
+- a virtual environment
+- the dependencies required by the project
+- valid environment variables in `.env`
+- a configured dataset path in `configs/base.yaml`
 
-1. Start Postgres (port 5433 on host → 5432 in container)
+Depending on your setup, you may also need:
 
-```zsh
-# Choose one of the provided compose files:
-# - docker-compose-gemini.yml (default in docs) uses Gemini provider
-# - docker-compose-claude.yml uses Anthropic (if you switch providers later)
-docker compose -f docker-compose-gemini.yml up -d
-```
+- API credentials for the configured LLM provider
+- the additional Python packages required by clustering and NLP
 
-1. Create a virtual environment and install the package (editable) and required extras:
+---
 
-```zsh
+## Installation
+
+Create and activate a virtual environment:
+
+```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
+```
+
+Upgrade `pip` and install the project:
+
+```bash
 pip install -U pip
 pip install -e .
-
-# Extra deps used by clustering and NLP
-pip install scikit-learn hdbscan joblib spacy
-python -m spacy download en_core_web_sm
 ```
 
-1. Set environment variables (adjust to your setup):
+Install any additional dependencies required by your pipeline stages if they are not already part of the environment.
 
-```zsh
-export POSTGRES_USER=sastllm
-export POSTGRES_PASSWORD=changeme
-export POSTGRES_DB=sastllm
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5433
+---
 
-# LLM provider credentials (pick one that matches configs/llms.yaml)
-export GOOGLE_API_KEY=your_google_api_key     # for Gemini
-# export OPENAI_API_KEY=your_openai_api_key   # for OpenAI
+## Environment configuration
+
+The CLI loads environment variables from `.env` on startup.
+
+Make sure your environment is configured correctly before running the pipeline. In particular, configure the credentials required by the LLM provider defined in `configs/llms.yaml`.
+
+For example:
+
+- if the provider is Google, configure the corresponding Google API key
+- if the provider is OpenAI, configure the corresponding OpenAI API key
+
+The exact variables depend on your implementation and environment setup.
+
+---
+
+## Dataset download
+
+The dataset used in this project is not publicly distributed.
+
+Access may be granted upon request for research purposes, subject to availability and approval.
+
+For access requests, please contact:
+
+- **Name**: Ioannis Moutevelidis  
+- **Email**: <moutasjo@gmail.com>
+
+## Dataset configuration
+
+The dataset path is configured in `configs/base.yaml`.
+
+Current example:
+
+```yaml
+paths:
+  dataset: "../test_pipeline/test_dataset"
 ```
 
-1. Configure paths in `configs/base.yaml`:
-
-- `paths.database_dir`: root folder with your repositories (see below)
-- `paths.evaluation_dir`: where CodeSearchNet split will be downloaded (optional)
-
-Expected dataset layout for `paths.database_dir`:
+The project expects a repository-based dataset organization. A typical dataset layout is:
 
 ```text
-/path/to/dataset/
+dataset/
   malware/
-    repo1/
-      ...
-  benignware/
-    repoA/
-      ...
+    repo_1/
+    repo_2/
+    ...
+  benign/
+    repo_a/
+    repo_b/
+    ...
 ```
 
-1. Run the pipeline via CLI:
+If your local dataset uses different folder names or a different structure, adapt the pipeline and configuration accordingly.
 
-```zsh
-# Insert repositories/files/snippets into DB from local dataset
-sastllm setup
+---
 
-# Generate snippet functionalities (LLM) and cluster tags
+## Running the CLI
+
+Display the CLI help:
+
+```bash
+sastllm --help
+```
+
+Typical commands include:
+
+```bash
+sastllm load
+sastllm split
+sastllm generate_functionalities
+sastllm cluster --mode train
+sastllm classify --mode train
+sastllm cluster --mode test
+sastllm classify --mode test
+```
+
+If batch-based functionality generation is preferred:
+
+```bash
+sastllm generate_functionalities_batch_api
+```
+
+If cached functionality descriptions already exist:
+
+```bash
+sastllm load_cache_functionalities /path/to/cached_functionalities
+```
+
+See `docs/USAGE.md` for the full command reference and recommended workflows.
+
+---
+
+## Typical workflow
+
+A standard end-to-end execution flow is:
+
+```bash
+# 1. Load the dataset
+sastllm load
+
+# 2. Split the dataset
+sastllm split
+
+# 3. Generate snippet functionalities
+sastllm generate_functionalities
+
+# 4. Train clustering
+sastllm cluster --mode train
+
+# 5. Train classification
+sastllm classify --mode train
+
+# 6. Run clustering on the test setup
+sastllm cluster --mode test
+
+# 7. Run classification on the test setup
+sastllm classify --mode test
+```
+
+A shorter wrapper-based execution may also be available through:
+
+```bash
 sastllm train
-
-# ML-based classification (see docs/USAGE.md)
-sastllm classify_1
-
-# Optional: evaluation with CodeSearchNet snippets/docstrings
-sastllm eval
+sastllm test
 ```
 
-See docs/USAGE.md for detailed command descriptions and options.
+These wrapper commands depend on the current project implementation and are intended to execute the predefined training and testing pipelines.
+
+---
 
 ## Configuration files
 
-- `configs/base.yaml` – app name, logging, and paths for datasets/evaluation
-- `configs/llms.yaml` – model host/name/params for each processor stage
-- `configs/classification.yaml` – training/inference hyperparameters for the MLP route
+The project now uses a broader and more modular configuration layout than the outdated version.
 
-Details and examples in docs/CONFIG.md.
+Current configuration files include:
 
-## Project layout
+- `configs/base.yaml`
+- `configs/llms.yaml`
+- `configs/split.yaml`
+- `configs/clustering.yaml`
+- `configs/classification.yaml`
+- `configs/languages.yaml`
+- `configs/important_nodes.yaml`
+- `configs/comment_nodes.yaml`
 
-```text
-src/
-  sastllm/
-    analyzers/      # LLM prompt pipelines (LangChain chains)
-    extractors/     # Regex/structured text extractors for LLM outputs
-    parsers/        # AST/Tree-sitter parsing and chunking
-    processors/     # Orchestrators for each pipeline step
-    utils/          # Normalizer, embeddings, clustering, repository encoder/classifier
-    models/         # PyTorch Lightning datasets and models
-scripts/
-  cli.py           # Typer CLI entry
-  pipelines.py     # CLI action implementations
-  evaluation.py    # CSN-based evaluation helpers
-  logging_config.py
-configs/
-  base.yaml, llms.yaml, classification.yaml
-```
+### What they control
+
+- `base.yaml` – application metadata, logging, and dataset path
+- `llms.yaml` – LLM model configuration for snippet functionality generation
+- `split.yaml` – dataset splitting parameters and binary labels
+- `clustering.yaml` – clustering search/train/test settings
+- `classification.yaml` – classifier train/test settings
+- `languages.yaml` – supported programming languages and suffix mappings
+- `important_nodes.yaml` – important AST node mappings used during structural processing
+- `comment_nodes.yaml` – comment and annotation node mappings
+
+See `docs/CONFIG.md` for full details.
+
+---
+
+## Current CLI commands
+
+The central CLI currently exposes commands corresponding to the updated pipeline:
+
+- `download_benign_dataset`
+- `load`
+- `split`
+- `generate_functionalities`
+- `generate_functionalities_batch_api`
+- `load_cache_functionalities`
+- `cluster --mode {search|train|test}`
+- `classify --mode {train|test}`
+- `train`
+- `test`
+
+This replaces the outdated README command set such as `setup`, `eval`, and `classify_1`, which no longer reflects the current CLI.
+
+---
 
 ## Notes and caveats
 
-- LLM providers: default config uses Google Gemini 2.5 Flash via LangChain for intermediate analysis (e.g., snippet functionalities). You can switch to OpenAI by changing `host: openai` and setting `OPENAI_API_KEY`.
-- Docker compose files: this repo ships `docker-compose-gemini.yml` (default in docs) and `docker-compose-claude.yml`. Use `-f <file>` with `docker compose`.
-- Clustering: Requires `scikit-learn` and `hdbscan`. Ensure both are installed.
-- spaCy: `en_core_web_sm` model must be installed for normalization.
-- Postgres: the compose files expose port 5433 on the host; set matching `POSTGRES_PORT`.
-  - The schema file `database/00__init.sql` is mounted into the container's `/docker-entrypoint-initdb.d/` and will be executed automatically on first initialization of the volume. To re-run it, remove the `pg_sastllm_data` volume.
-  - The app loads environment variables from `.env` via `python-dotenv`. Set `DB_SKIP_CREATE_ALL=true` if you want to rely solely on the SQL schema and avoid SQLAlchemy `create_all`.
-- Dataset labeling: The ML route expects correct repository labels (malware/benignware). See docs/PIPELINE.md for labeling behavior and recommendations.
+- The README should be read together with `docs/USAGE.md`, `docs/CONFIG.md`, and `docs/PIPELINE.md`, since those files contain the authoritative detailed documentation.
+- The current configuration shows a dedicated `snippet_processor` model in `llms.yaml`. If additional LLM processing stages are introduced later, their configuration should be documented there as well.
+- Clustering and classification use explicit `train` and `test` sections in their respective YAML files.
+- The current pipeline is centered on the four-phase thesis architecture rather than the older processor-centric description.
+- If you reuse cached functionality descriptions, make sure they are compatible with the current clustering and classification setup.
+- If you change the clustering dimensionality or the number of clusters, ensure that the classifier configuration remains consistent with that representation.
 
-## Next steps and contributions
+---
 
-Improvements that add value quickly:
+## Thesis positioning
 
-- Persist LLM classification outputs back to DB
-- Refine repository label inference during dataset load
-- Finalize and document the ML classifier training/inference path end-to-end
-- Expand tests and add linters/formatters
+Within the thesis, SASTLLM is used as a framework for studying malware detection through **semantic behavioral abstraction**.
 
-PRs and issues are welcome.
+Its main research idea is that:
 
+- code can first be translated into functionality-level natural language descriptions
+- these descriptions can be organized into semantic clusters
+- repositories can then be represented as distributions over these clusters
+- malware detection can be performed on that higher-level behavioral representation
+
+This separates low-level code syntax from higher-level behavior modeling and supports a more interpretable repository classification process.
+
+---
+
+## Where to start
+
+For a new user, the recommended reading order is:
+
+1. `docs/SETUP.md`
+2. `docs/CONFIG.md`
+3. `docs/USAGE.md`
+4. `docs/PIPELINE.md`
+
+That sequence gives the cleanest path from installation to execution to understanding the system design.
