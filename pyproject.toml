@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools==68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,44 +7,39 @@ name = "thesis-sastllm"
 version = "0.1.0"
 description = "..."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "chardet>=5.2.0",
-    "dotenv>=0.9.9",
-    "kneed>=0.8.5",
-    "langchain>=1.0.5",
-    "langchain-core>=1.0.4",
-    "langchain-community>=0.4.1",
-    "langchain-google-genai>=3.0.2",
-    "langchain-openai>=1.0.2",
-    "lightning>=2.5.6",
-    "matplotlib>=3.10.7",
-    "numpy>=2.3.4",
-    "pip>=25.3",
-    "psycopg[binary,pool]>=3.2.12",
-    "qdrant-client>=1.15.1",
-    "spacy>=3.8.8",
-    "sqlalchemy>=2.0.44",
-    "tensorboard>=2.20.0",
-    "tiktoken>=0.12.0",
-    "tree-sitter>=0.25.2",
-    "typer>=0.20.0",
-    "torch==2.6.0",
-    "torchvision==0.21.0",
-    "torchaudio==2.6.0",
-    "sentence-transformers>=5.1.2",
-    "datasets==3.6.0",
-    "huggingface-hub>=0.35.3",
-    "shap>=0.49.1",
-    "ruff>=0.14.7",
+    "dotenv==0.9.9",
+    "kneed==0.8.6",
+    "lightning==2.6.1",
+    "matplotlib==3.10.8",
+    "numpy==2.4.4",
+    "pip==26.0.1",
+    "psycopg[binary,pool]==3.3.3",
+    "qdrant-client==1.17.1",
+    "sqlalchemy==2.0.49",
+    "tensorboard==2.20.0",
+    "tiktoken==0.12.0",
+    "tree-sitter==0.25.2",
+    "typer==0.24.2",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "torchaudio==2.11.0",
+    "sentence-transformers==5.4.1",
+    "datasets==4.8.4",
+    "huggingface-hub==1.11.0",
+    "shap==0.51.0",
+    "spacy==3.8.11",
+    "langchain==1.2.15",
+    "pydantic-settings==2.14.0",
+    "pydantic==2.12.5",
+    "langchain-google-genai==4.2.2",
+    "langchain-openai==1.2.0",
+    "chardet==7.4.3",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "ruff>=0.5.0",
-    "black>=24.10.0",
-    "mypy>=1.10.0",
-]
+dev = ["ruff==0.15.11", "black==26.3.1", "mypy==1.20.2"]
 
 [tool.ruff]
 line-length = 150
@@ -57,9 +52,7 @@ exclude = [
     "**/migrations/**",
 ]
 extend-select = ["E", "F", "I"]
-ignore = [
-    "E203",
-]
+ignore = ["E203"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -72,19 +65,13 @@ line-ending = "lf"
 sastllm = "scripts.cli:main"
 
 [tool.uv.sources]
-torch = [
-    { index = "pytorch-cu126"},
-]
-torchvision = [
-    { index = "pytorch-cu126" },
-]
-torchaudio = [
-    { index = "pytorch-cu126" },
-]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+torchaudio = [{ index = "pytorch-cpu" }]
 
 [[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 
