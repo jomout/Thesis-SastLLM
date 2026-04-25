@@ -1,4 +1,4 @@
-from typing import Iterator, List, Optional, cast
+from typing import Iterator, List, Optional, Tuple, cast
 
 from sastllm.configs import get_logger
 from sastllm.db.db import SessionLocal
@@ -16,7 +16,7 @@ class FunctionalityManager:
 
     Attributes:
         Session: A SQLAlchemy session factory for creating database sessions.
-        
+
     Methods:
         add_functionality: Inserts a new functionality record into the database.
         add_bulk_functionalities: Inserts multiple functionality records in a single transaction.
@@ -28,7 +28,6 @@ class FunctionalityManager:
 
     def __init__(self):
         self.Session = SessionLocal
-
 
     def add_functionality(self, functionality: CreateFunctionalityDto) -> int:
         """
@@ -58,7 +57,6 @@ class FunctionalityManager:
             # Transaction is already rolled back by the context manager
             logger.error(f"Failed to add functionality: {e}")
             raise RuntimeError(f"Failed to add functionality: {e}") from e
-
 
     def add_bulk_functionalities(self, functionalities: List[CreateFunctionalityDto]) -> List[int]:
         """
@@ -97,7 +95,6 @@ class FunctionalityManager:
             logger.error(f"Failed bulk add functionalities: {e}")
             raise RuntimeError(f"Failed to add bulk functionalities: {e}") from e
 
-
     def get_functionalities(self, batch_size: int = 100) -> Iterator[GetFunctionalityDto]:
         """
         Lazily fetches all functionality records from the database and yields them as dataclass instances.
@@ -117,17 +114,54 @@ class FunctionalityManager:
                     snippet_id=cast(int, f.snippet_id),
                     description=str(f.description),
                     tag=str(f.tag),
-                    cluster_id=cast(Optional[int], f.cluster_id)
+                    cluster_id=cast(Optional[int], f.cluster_id),
                 )
-            
-    
+
+    def get_all_functionalities(self, batch_size: int = 1000) -> Iterator[Tuple[int, GetFunctionalityDto]]:
+        """
+        Streams ALL functionalities with repository_id resolved via joins.
+
+        This replaces:
+            get_functionalities_by_repository (N+1 killer)
+
+        Yields:
+            GetFunctionalityDto with repository_id attached
+        """
+        logger.debug("Fetching ALL functionalities with repository_id (bulk)")
+
+        with self.Session() as session:
+            query = (
+                session.query(
+                    FunctionalityModel.functionality_id,
+                    FunctionalityModel.snippet_id,
+                    FunctionalityModel.description,
+                    FunctionalityModel.tag,
+                    FunctionalityModel.cluster_id,
+                    FileModel.repository_id,
+                )
+                .join(SnippetModel, FunctionalityModel.snippet_id == SnippetModel.snippet_id)
+                .join(FileModel, SnippetModel.file_id == FileModel.file_id)
+                .yield_per(batch_size)
+            )
+
+            for f_id, s_id, desc, tag, cluster_id, repo_id in query:
+                dto = GetFunctionalityDto(
+                    functionality_id=cast(int, f_id),
+                    snippet_id=cast(int, s_id),
+                    description=str(desc),
+                    tag=str(tag),
+                    cluster_id=cast(Optional[int], cluster_id),
+                )
+
+                yield (repo_id, dto)
+
     def get_functionality(self, functionality_id: int) -> Optional[GetFunctionalityDto]:
         """
         Fetches a functionality record from the database identified by ID.
 
         Args:
             functionality_id (int): The ID of a functionality record.
-            
+
         Returns:
             Optional[GetFunctionalityDto]: A GetFunctionalityDto object with the corresponding ID.
         """
@@ -141,9 +175,8 @@ class FunctionalityManager:
                 snippet_id=cast(int, f.snippet_id),
                 description=str(f.description),
                 tag=str(f.tag),
-                cluster_id=cast(Optional[int], f.cluster_id)
+                cluster_id=cast(Optional[int], f.cluster_id),
             )
-
 
     def delete_functionality(self, functionality_id: int) -> None:
         """
@@ -159,7 +192,6 @@ class FunctionalityManager:
         except Exception as e:
             logger.error(f"Failed to delete functionality {functionality_id}: {e}")
             raise RuntimeError(f"Failed to delete functionality {functionality_id}: {e}") from e
-
 
     def update_functionality(self, functionality: UpdateFunctionalityDto) -> None:
         """
@@ -184,13 +216,10 @@ class FunctionalityManager:
 
         try:
             with self.Session.begin() as session:
-                session.query(FunctionalityModel).filter_by(
-                    functionality_id=functionality.functionality_id
-                ).update(fields, synchronize_session=False)
+                session.query(FunctionalityModel).filter_by(functionality_id=functionality.functionality_id).update(fields, synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to update functionality {functionality.functionality_id}: {e}")
             raise RuntimeError(f"Failed to update functionality {functionality.functionality_id}: {e}") from e
-        
 
     def update_bulk_functionalities(self, functionalities: List[UpdateFunctionalityDto]) -> None:
         """
@@ -220,13 +249,12 @@ class FunctionalityManager:
                     if not fields:
                         continue  # Nothing to update for this record
 
-                    session.query(FunctionalityModel).filter_by(
-                        functionality_id=functionality.functionality_id
-                    ).update(fields, synchronize_session=False)
+                    session.query(FunctionalityModel).filter_by(functionality_id=functionality.functionality_id).update(
+                        fields, synchronize_session=False
+                    )
         except Exception as e:
             logger.error(f"Failed bulk update functionalities: {e}")
             raise RuntimeError(f"Failed to bulk update functionalities: {e}") from e
-        
 
     def get_functionalities_by_repository(self, repository_id: int, batch_size: int = 100) -> Iterator[GetFunctionalityDto]:
         """
@@ -255,5 +283,5 @@ class FunctionalityManager:
                     snippet_id=cast(int, f.snippet_id),
                     description=str(f.description),
                     tag=str(f.tag),
-                    cluster_id=cast(Optional[int], f.cluster_id)
+                    cluster_id=cast(Optional[int], f.cluster_id),
                 )

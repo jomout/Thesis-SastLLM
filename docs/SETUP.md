@@ -217,7 +217,7 @@ The project depends on `spacy`, but the language model is not installed automati
 Install the English model explicitly:
 
 ```bash
-python -m spacy download en_core_web_sm
+uv run -m spacy download en_core_web_sm
 ```
 
 This is commonly needed if your pipeline performs NLP normalization or text preprocessing on functionality descriptions.

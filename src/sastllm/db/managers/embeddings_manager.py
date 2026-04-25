@@ -17,8 +17,8 @@ class EmbeddingsManager:
     """
 
     def __init__(self, host: str = "localhost", port: int = 6333, grpc_port: int = 6334):
-        self.rest = QdrantClient(host=host, port=port, prefer_grpc=False, timeout=None)
-        self.grpc = QdrantClient(host=host, grpc_port=grpc_port, prefer_grpc=True, timeout=None)
+        self.rest = QdrantClient(host=host, port=port, prefer_grpc=False, timeout=100000)
+        self.grpc = QdrantClient(host=host, grpc_port=grpc_port, prefer_grpc=True, timeout=100000)
 
     def insert_embeddings(
         self,
@@ -43,14 +43,64 @@ class EmbeddingsManager:
                 vectors_config=models.VectorParams(size=size, distance=models.Distance.COSINE),
             )
         # Prepare points for insertion
-        points = [
-            models.PointStruct(id=ids[i], vector=embeddings[i], payload=payloads[i])
-            for i in range(len(embeddings))
-        ]
+        points = [models.PointStruct(id=ids[i], vector=embeddings[i], payload=payloads[i]) for i in range(len(embeddings))]
         # Upsert points in batches
         for i in range(0, len(points), batch_size):
             batch_points = points[i : i + batch_size]
             self.grpc.upsert(collection_name=collection_name, points=batch_points)
+
+    def update_payload_by_filter(
+        self,
+        collection_name: str,
+        filter: dict,
+        payload: dict,
+    ):
+        """
+        Bulk payload update using Qdrant filters.
+
+        Example filter:
+            {"repository_id": {"$in": [1,2,3]}}
+
+        NOTE: Translates to Qdrant Filter internally.
+        """
+
+        def build_filter(f: dict) -> models.Filter:
+            must_conditions = []
+
+            for key, value in f.items():
+                if isinstance(value, dict):
+                    if "$in" in value:
+                        must_conditions.append(
+                            models.FieldCondition(
+                                key=key,
+                                match=models.MatchAny(any=value["$in"]),
+                            )
+                        )
+                    else:
+                        raise ValueError(f"Unsupported operator in filter for key '{key}': {value}")
+                elif isinstance(value, (bool, int, str)):
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key=key,
+                            match=models.MatchValue(value=value),
+                        )
+                    )
+                else:
+                    raise ValueError(f"Unsupported filter value type for key '{key}': {type(value)}")
+
+            return models.Filter(must=must_conditions)
+
+        try:
+            qdrant_filter = build_filter(filter)
+
+            self.rest.set_payload(
+                collection_name=collection_name,
+                payload=payload,
+                points=models.FilterSelector(filter=qdrant_filter),
+            )
+
+        except Exception as e:
+            raise RuntimeError(f"Failed bulk payload update: {e}") from e
 
     def update_embedding_payload(
         self,
@@ -183,11 +233,7 @@ class EmbeddingsManager:
             values = [values]
 
         # Qdrant expects OR logic in "should"
-        query_filter = models.Filter(
-            should=[
-                models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values
-            ]
-        )
+        query_filter = models.Filter(should=[models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values])
 
         next_page = None
 
@@ -210,9 +256,7 @@ class EmbeddingsManager:
             if next_page is None:
                 break
 
-    def count_embeddings_by_payload_field(
-        self, collection_name: str, field: str, values: str | list[str]
-    ) -> int:
+    def count_embeddings_by_payload_field(self, collection_name: str, field: str, values: str | list[str]) -> int:
         """
         Counts the number of embeddings matching the given payload field values.
         Args:
@@ -228,11 +272,7 @@ class EmbeddingsManager:
             values = [values]
 
         # Qdrant expects OR logic in "should"
-        query_filter = models.Filter(
-            should=[
-                models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values
-            ]
-        )
+        query_filter = models.Filter(should=[models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values])
 
         count_result = self.grpc.count(collection_name=collection_name, count_filter=query_filter)
         return count_result.count

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Iterator, Literal, Optional, cast
+from typing import Dict, Iterator, List, Literal, Optional, cast
 
 from sqlalchemy import func
 
@@ -56,9 +56,7 @@ class RepositoryManager:
         try:
             # Session + transaction; commits on success, rolls back on exception.
             with self.Session.begin() as session:
-                repo_model = RepositoryModel(
-                    name=repository.name, label=repository.label, split=repository.split
-                )
+                repo_model = RepositoryModel(name=repository.name, label=repository.label, split=repository.split)
                 session.add(repo_model)
                 session.flush()  # populate PK before exiting the context
                 new_id = cast(int, repo_model.repository_id)
@@ -68,9 +66,7 @@ class RepositoryManager:
             logger.error(f"Failed to add repository: {e}")
             raise RuntimeError(f"Failed to add repository: {e}") from e
 
-    def get_repositories(
-        self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100
-    ) -> Iterator[GetRepositoryDto]:
+    def get_repositories(self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100) -> Iterator[GetRepositoryDto]:
         """
         Lazily fetches all repository records from the database and yields them
         as dataclass instances.
@@ -181,14 +177,10 @@ class RepositoryManager:
 
         try:
             with self.Session.begin() as session:
-                session.query(RepositoryModel).filter_by(
-                    repository_id=repository.repository_id
-                ).update(fields, synchronize_session=False)
+                session.query(RepositoryModel).filter_by(repository_id=repository.repository_id).update(fields, synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to update repository {repository.repository_id}: {e}")
-            raise RuntimeError(
-                f"Failed to update repository {repository.repository_id}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to update repository {repository.repository_id}: {e}") from e
 
     def get_repositories_with_cluster_ids(
         self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100
@@ -236,7 +228,6 @@ class RepositoryManager:
                         repository_id=current_repo_id,
                         data=dict(current_counts) if current_counts else None,
                         label=current_label,
-                        labels=[],
                     )
                     current_counts.clear()
                     current_label = None
@@ -253,8 +244,26 @@ class RepositoryManager:
                     repository_id=current_repo_id,
                     data=dict(current_counts) if current_counts else None,
                     label=current_label,
-                    labels=[],
                 )
+
+    def bulk_update_split(self, repo_ids: List[int], split: str) -> None:
+        """
+        Bulk updates repository split in a single query.
+        """
+        if not repo_ids:
+            return
+
+        logger.debug(f"Bulk updating {len(repo_ids)} repositories to split={split}")
+
+        try:
+            with self.Session.begin() as session:
+                session.query(RepositoryModel).filter(RepositoryModel.repository_id.in_(repo_ids)).update(
+                    {RepositoryModel.split: split},
+                    synchronize_session=False,
+                )
+        except Exception as e:
+            logger.error(f"Failed bulk update split: {e}")
+            raise RuntimeError(f"Failed bulk update split: {e}") from e
 
     def get_num_repositories(self) -> int:
         """
@@ -264,11 +273,7 @@ class RepositoryManager:
             int: The total number of processed repositories.
         """
         with self.Session() as session:
-            return (
-                session.query(func.count(RepositoryModel.repository_id))
-                .filter(RepositoryModel.processed.is_(True))
-                .scalar()
-            )
+            return session.query(func.count(RepositoryModel.repository_id)).filter(RepositoryModel.processed.is_(True)).scalar()
 
     def get_num_of_clusters(self) -> int:
         with self.Session() as session:

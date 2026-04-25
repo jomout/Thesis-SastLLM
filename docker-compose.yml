@@ -11,8 +11,9 @@ services:
     volumes:
       - pg_code_data:/var/lib/postgresql
       # Load initial schema and triggers on first database initialization
-      - ./database/00__init.sql:/docker-entrypoint-initdb.d/00__init.sql:ro
-      - ./database/01__triggers.sql:/docker-entrypoint-initdb.d/01__triggers.sql:ro
+      # - ./database/00__init.sql:/docker-entrypoint-initdb.d/00__init.sql:ro
+      # - ./database/01__triggers.sql:/docker-entrypoint-initdb.d/01__triggers.sql:ro
+      - ./database/backup-2026-4-24.sql:/docker-entrypoint-initdb.d/backup-2026-4-24.sql:ro
     restart: unless-stopped
 
   code_embeddings:
