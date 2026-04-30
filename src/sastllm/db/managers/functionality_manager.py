@@ -1,5 +1,7 @@
 from typing import Iterator, List, Optional, Tuple, cast
 
+from sqlalchemy import inspect as sa_inspect
+
 from sastllm.configs import get_logger
 from sastllm.db.db import SessionLocal
 from sastllm.db.models import FileModel, FunctionalityModel, SnippetModel
@@ -222,36 +224,34 @@ class FunctionalityManager:
             raise RuntimeError(f"Failed to update functionality {functionality.functionality_id}: {e}") from e
 
     def update_bulk_functionalities(self, functionalities: List[UpdateFunctionalityDto]) -> None:
-        """
-        Updates multiple functionality records in a single transaction. Only updates provided fields.
-
-        Args:
-            functionalities (List[UpdateFunctionalityDto]): A list of functionality data transfer objects containing IDs and fields to update.
-        """
         logger.debug(f"Updating {len(functionalities)} functionalities (bulk)")
 
         if not functionalities:
-            return  # Nothing to update
+            return
 
         try:
+            mappings = []
+            for dto in functionalities:
+                row: dict = {"functionality_id": dto.functionality_id}
+
+                if dto.snippet_id is not None:
+                    row["snippet_id"] = dto.snippet_id
+                if dto.description is not None:
+                    row["description"] = dto.description
+                if dto.tag is not None:
+                    row["tag"] = dto.tag
+                if dto.cluster_id is not None:
+                    row["cluster_id"] = dto.cluster_id
+
+                if len(row) > 1:
+                    mappings.append(row)
+
+            if not mappings:
+                return
+
             with self.Session.begin() as session:
-                for functionality in functionalities:
-                    fields = {}
-                    if functionality.snippet_id is not None:
-                        fields[FunctionalityModel.snippet_id] = functionality.snippet_id
-                    if functionality.description is not None:
-                        fields[FunctionalityModel.description] = functionality.description
-                    if functionality.tag is not None:
-                        fields[FunctionalityModel.tag] = functionality.tag
-                    if functionality.cluster_id is not None:
-                        fields[FunctionalityModel.cluster_id] = functionality.cluster_id
+                session.bulk_update_mappings(sa_inspect(FunctionalityModel), mappings)
 
-                    if not fields:
-                        continue  # Nothing to update for this record
-
-                    session.query(FunctionalityModel).filter_by(functionality_id=functionality.functionality_id).update(
-                        fields, synchronize_session=False
-                    )
         except Exception as e:
             logger.error(f"Failed bulk update functionalities: {e}")
             raise RuntimeError(f"Failed to bulk update functionalities: {e}") from e

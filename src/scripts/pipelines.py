@@ -78,7 +78,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
-    processor = TagProcessor(batch_size=100, collection_name=collection_name)
+    processor = TagProcessor(collection_name=collection_name)
 
     try:
         processor.run(mode=mode)

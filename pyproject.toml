@@ -14,7 +14,6 @@ dependencies = [
     "lightning==2.6.1",
     "matplotlib==3.10.8",
     "numpy==2.4.4",
-    "pip==26.0.1",
     "psycopg[binary,pool]==3.3.3",
     "qdrant-client==1.17.1",
     "sqlalchemy==2.0.49",

@@ -11,4 +11,4 @@ clustering:
 
   test:
     k: 10661
-    load_model_file: "models/clustering/trained_models/clusterer_k_10661_original.joblib"
+    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"

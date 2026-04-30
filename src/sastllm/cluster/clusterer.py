@@ -77,7 +77,6 @@ class Clusterer:
     def fit(
         self,
         data_source: BatchDataSource,
-        n: int,
         k: Optional[int] = None,
     ) -> None:
         logger.info("Fitting Clusterer model.")
@@ -88,14 +87,14 @@ class Clusterer:
         if self.n_clusters is None:
             raise ValueError("Number of clusters (n_clusters) must be set before fitting.")
 
-        self._fit(data_source=data_source, n=n, k=self.n_clusters, batch_size=1000)
+        self._fit(data_source=data_source, k=self.n_clusters, batch_size=1000)
         logger.debug("Clusterer model fitted.")
 
-    def predict(self, data_source: BatchDataSource, n: int) -> np.ndarray:
+    def predict(self, data_source: BatchDataSource) -> np.ndarray:
         logger.debug("Predicting clusters.")
         if not self.kmeans or not self.n_clusters:
             raise RuntimeError("Model must be fit before prediction.")
-        return self._predict(data_source=data_source, n=n)
+        return self._predict(data_source=data_source)
 
     def save_model(self, path: str | Path) -> None:
         logger.debug(f"Saving model to {path}")
@@ -141,8 +140,25 @@ class Clusterer:
 
         for k in tqdm(K_range, desc="Finding optimal k"):
             mbk = MiniBatchKMeans(n_clusters=k, batch_size=batch_size, random_state=42)
+
+            warmup: list[np.ndarray] = []
+            warmup_size = 0
+            warmup_done = False
+
             for _, X_batch in self._iter_batches(data_source, batch_size):
-                mbk.partial_fit(X_batch)
+                if not warmup_done:
+                    warmup.append(X_batch)
+                    warmup_size += len(X_batch)
+                    if warmup_size >= k:
+                        mbk.fit(np.concatenate(warmup))
+                        warmup_done = True
+                        warmup = []
+                else:
+                    mbk.partial_fit(X_batch)
+
+            if not warmup_done and warmup:
+                mbk.fit(np.concatenate(warmup))  # small k, whole dataset fits in warmup
+
             inertias.append(mbk.inertia_)
 
             if len(inertias) >= 3:
@@ -173,27 +189,48 @@ class Clusterer:
     def _fit(
         self,
         data_source: BatchDataSource,
-        n: int,
-        k: Optional[int] = None,
+        k: int,
         batch_size: int = 1000,
     ) -> None:
         logger.debug(f"Fitting MiniBatchKMeans (streaming, batch_size={batch_size})")
 
         if self.kmeans is None:
-            if k is None:
-                raise ValueError("k must be provided when initializing kmeans.")
             self.kmeans = MiniBatchKMeans(
                 n_clusters=k,
                 batch_size=batch_size,
                 random_state=42,
             )
 
+        warmup: list[np.ndarray] = []
+        warmup_size = 0
+        warmup_done = False
+
         for _, X_batch in self._iter_batches(data_source, batch_size):
-            self.kmeans.partial_fit(X_batch)
+            if not warmup_done:
+                warmup.append(X_batch)
+                warmup_size += len(X_batch)
+
+                if warmup_size >= k:
+                    X_warm = np.concatenate(warmup)
+                    self.kmeans.fit(X_warm)  # initialises centres
+                    warmup_done = True
+                    warmup = []
+            else:
+                self.kmeans.partial_fit(X_batch)
+
+        # Edge case: entire dataset was consumed into warmup but never >= k
+        if not warmup_done:
+            if warmup:
+                X_warm = np.concatenate(warmup)
+                if len(X_warm) < k:
+                    raise ValueError(f"Dataset has only {len(X_warm)} samples but k={k}. Reduce k or provide more data.")
+                self.kmeans.fit(X_warm)
+            else:
+                raise RuntimeError("Data source was empty.")
 
         logger.info("MiniBatchKMeans training completed.")
 
-    def _predict(self, data_source: BatchDataSource, n: int) -> np.ndarray:
+    def _predict(self, data_source: BatchDataSource) -> np.ndarray:
         logger.debug("Predicting clusters (streaming).")
         if not self.kmeans:
             raise RuntimeError("Model must be fit before prediction.")
