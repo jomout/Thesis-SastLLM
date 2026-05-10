@@ -141,7 +141,7 @@ Used by:
 - `sastllm classify --mode train`
 - `sastllm classify --mode test`
 
-Important naming note: `ClassifierConfig` uses `l1_lambda`, not `l1_param`.
+Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 
 ## `languages.yaml`
 

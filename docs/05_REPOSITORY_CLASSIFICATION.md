@@ -14,9 +14,12 @@ sastllm test
 Implementation paths:
 
 - Pipeline wrapper: `src/scripts/pipelines.py::classify_repositories`
-- Classifier orchestrator: `src/sastllm/ml/repository_classifier.py::RepositoryClassifier`
-- Repository encoder: `src/sastllm/utils/repository_encoder.py::RepositoryEncoder`
-- Dataset/model classes: `src/sastllm/ml/dataset.py`, `src/sastllm/ml/model.py`
+- Classification service: `src/sastllm/classification/service.py::RepositoryClassificationService`
+- Classification config: `src/sastllm/classification/config.py`
+- Repository encoders: `src/sastllm/classification/encoders.py`
+- Dataset assembly: `src/sastllm/classification/data.py`
+- Metrics: `src/sastllm/classification/metrics.py`
+- ML datasets/training/models: `src/sastllm/ml/datasets.py`, `src/sastllm/ml/training.py`, `src/sastllm/ml/models/`
 
 ## High-level wrappers
 
@@ -57,11 +60,11 @@ classification:
       seed: 42
 ```
 
-Important implementation detail: `ClassifierConfig` defines the L1 field as `l1_lambda`, while the YAML currently uses `l1_param`. With Pydantic's default behavior, `l1_param` is not the configured field name. Unless aliases or extra-field behavior are changed elsewhere, the classifier's default `l1_lambda=0.001` may be used instead of the YAML value.
+The YAML key `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 
 ## Data fetch
 
-`RepositoryClassifier` fetches repositories through:
+`RepositoryClassificationService` fetches repositories through:
 
 ```python
 RepositoryManager.get_repositories_with_cluster_ids()
@@ -87,7 +90,7 @@ Before encoding, every label that is not exactly `benign` is rewritten to `malic
 
 ## Repository vectorization
 
-`RepositoryEncoder` creates a fixed-width vector of length `k`.
+`ClusterDistributionEncoder` creates a fixed-width vector of length `k`.
 
 For a repository with cluster counts:
 
@@ -122,7 +125,7 @@ binary_labels:
 4. Builds a train/validation/test data module.
 5. Splits train repositories into train and validation with validation size `0.1`.
 6. Uses stratified train/validation splitting.
-7. Trains a Lightning `CodeModel`.
+7. Trains the configured Lightning model. The current default is `MLPRepositoryClassifier`.
 8. Monitors `val_acc`.
 9. Uses early stopping with patience `10`.
 10. Saves the best checkpoint as `best.ckpt`.

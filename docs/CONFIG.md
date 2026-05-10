@@ -89,4 +89,4 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 - Only `snippet_processor` is currently supported by the LLM factory.
 - The Qdrant collection name is derived from `split.model_name` by replacing `/` with `_`.
 - The classifier `k` should match the clustering `k`.
-- `classification.yaml` currently uses `l1_param`, while `ClassifierConfig` expects `l1_lambda`.
+- `classification.yaml` may use `l1_param`; the classification config maps it to `l1_lambda`.

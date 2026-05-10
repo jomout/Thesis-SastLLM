@@ -1,10 +1,10 @@
-"""
-sastllm.models
-~~~~~~~~~~~~~~~~~~~
-This subpackage contains ML models for the SastLLM project.
-"""
+from .datasets import RepositoryDataModule, RepositoryTensorDataset
+from .models import MLPRepositoryClassifier, RepositoryClassifierModule, build_model
 
-from .dataset import CodeDataModule, CodeDataset
-from .model import CodeModel
-
-__all__ = ["CodeDataset", "CodeDataModule", "CodeModel"]
+__all__ = [
+    "MLPRepositoryClassifier",
+    "RepositoryClassifierModule",
+    "RepositoryDataModule",
+    "RepositoryTensorDataset",
+    "build_model",
+]

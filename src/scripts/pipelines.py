@@ -4,12 +4,12 @@ import os
 from pathlib import Path
 from typing import List, Literal, Optional
 
+from sastllm.classification import ClassificationConfig, RepositoryClassificationService
 from sastllm.clustering import FunctionalityClusteringService
 from sastllm.configs import get_logger
 from sastllm.db import FunctionalityManager, SnippetManager
 from sastllm.dtos import CreateFunctionalityDto
 from sastllm.dtos.update_dtos import UpdateSnippetDto
-from sastllm.ml.repository_classifier import ClassifierConfig, RepositoryClassifier
 from sastllm.processors import (
     BatchFileProcessor,
     BatchFilesGenerator,
@@ -18,7 +18,7 @@ from sastllm.processors import (
 )
 from sastllm.utils.dataset_splitter import DatasetSplitter
 
-from .utils import get_classification_config, get_model, load_yaml
+from .utils import get_model, load_yaml
 
 logger = get_logger(__name__)
 
@@ -134,30 +134,17 @@ def classify_repositories(mode: Literal["train", "test"]) -> None:
     """
     logger.info("Classifying repositories by their clusters using ML.")
 
-    # Pull params from YAML and thread them as kwargs everywhere
-    save_dir, params = get_classification_config(mode=mode)
-
-    config = ClassifierConfig(**params)
-
-    binary_classifier = RepositoryClassifier(
-        config=config,
-    )
+    config = ClassificationConfig.from_yaml(mode=mode)
+    service = RepositoryClassificationService(config=config)
 
     try:
         if mode == "train":
-            model_dir = binary_classifier.fit(save_dir=save_dir)
-            print("Model saved to: %s", model_dir)
-
-            # Evaluate on train and test sets
-            binary_classifier.evaluate(split="train", model_dir=model_dir)
+            model_dir = service.fit()
+            print(f"Model saved to: {model_dir}")
+            service.evaluate(split="train", model_dir=model_dir)
         else:
-            load_dir = save_dir
-            if load_dir is None:
-                msg = "In 'test' mode, 'model_dir' must be specified."
-                logger.error(msg)
-                raise ValueError(msg)
-            binary_classifier.test(model_dir=load_dir)
-            binary_classifier.evaluate(split="test", model_dir=load_dir)
+            service.test()
+            service.evaluate(split="test")
 
     except Exception as e:
         logger.error(f"Repository classification failed: {e}")

@@ -12,10 +12,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+from sastllm.classification import ClassificationConfig, LabelMapping, ModelConfig, RepositoryClassificationService, TrainingConfig
 from sastllm.configs import get_logger
-from sastllm.ml import CodeDataModule, CodeModel
-from sastllm.ml.repository_classifier import ClassifierConfig, RepositoryClassifier
-from sastllm.utils.repository_encoder import BINARY_LABEL_MAP
+from sastllm.ml import RepositoryDataModule
+from sastllm.ml.models import MLPRepositoryClassifier
 
 logger = get_logger(__name__)
 
@@ -103,7 +103,7 @@ def plot_top_signed_features(
 # SHAP wrapper
 # -----------------------------
 class ShapModelWrapper(torch.nn.Module):
-    def __init__(self, model: CodeModel):
+    def __init__(self, model: MLPRepositoryClassifier):
         super().__init__()
         self.model = model.eval()
 
@@ -114,7 +114,7 @@ class ShapModelWrapper(torch.nn.Module):
 # -----------------------------
 # Helpers
 # -----------------------------
-def get_background_tensor(dm: CodeDataModule, n: int, device):
+def get_background_tensor(dm: RepositoryDataModule, n: int, device):
     dm.setup()
     xs = []
     for _, X, _ in dm.train_dataloader():
@@ -124,7 +124,7 @@ def get_background_tensor(dm: CodeDataModule, n: int, device):
     return torch.cat(xs, dim=0)[:n].to(device)
 
 
-def get_explain_batch(dm: CodeDataModule, split: Literal["train", "test"], n: int):
+def get_explain_batch(dm: RepositoryDataModule, split: Literal["train", "test"], n: int):
     dm.setup()
     ds = dm.train_ds if split == "train" else dm.test_ds
     ids, X, y = next(iter(DataLoader(ds, batch_size=n, shuffle=True)))
@@ -166,7 +166,7 @@ def run_shap(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cfg = ClassifierConfig(
+    training = TrainingConfig(
         batch_size=16,
         epochs=30,
         lr=0.0005,
@@ -175,14 +175,19 @@ def run_shap(
         seed=42,
         k=10661,
     )
+    config = ClassificationConfig(
+        save_model_dir=None,
+        load_model_dir=model_dir,
+        training=training,
+        model=ModelConfig(),
+    )
+    service = RepositoryClassificationService(config=config)
+    dm = service.datamodule()
 
-    clf = RepositoryClassifier(config=cfg)
-    dm = clf._setup_datamodule(full_dataset=clf.full_dataset, validation_size=0.1, batch_size=cfg.batch_size)
-
-    labels = clf.full_dataset.y.numpy(force=True)
+    labels = service.bundle.dataset.y.numpy(force=True)
     class_counts = dict(zip(*np.unique(labels, return_counts=True)))
 
-    model = CodeModel.load_from_checkpoint(
+    model = MLPRepositoryClassifier.load_from_checkpoint(
         model_dir / "best.ckpt",
         class_counts=class_counts,
     )
@@ -198,7 +203,7 @@ def run_shap(
     X = X.to(device)
 
     shap_values = explainer.shap_values(X)
-    class_idx = {v: k for k, v in BINARY_LABEL_MAP.items()}[explain_class]
+    class_idx = LabelMapping.from_split_config().label_to_index[explain_class]
 
     X_np = X.cpu().numpy()
     sv = class_shap_to_2d(shap_values, X_np, class_idx)
