@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import List, Literal, Optional
 
+from sastllm.clustering import FunctionalityClusteringService
 from sastllm.configs import get_logger
 from sastllm.db import FunctionalityManager, SnippetManager
 from sastllm.dtos import CreateFunctionalityDto
@@ -14,7 +15,6 @@ from sastllm.processors import (
     BatchFilesGenerator,
     CodeProcessor,
     SnippetProcessor,
-    TagProcessor,
 )
 from sastllm.utils.dataset_splitter import DatasetSplitter
 
@@ -78,7 +78,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
-    processor = TagProcessor(collection_name=collection_name)
+    processor = FunctionalityClusteringService(collection_name=collection_name)
 
     try:
         processor.run(mode=mode)

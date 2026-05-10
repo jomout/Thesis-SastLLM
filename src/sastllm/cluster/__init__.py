@@ -1,10 +1,11 @@
 """
 sastllm.cluster
 ~~~~~~~~~~~~~~~~~~~
-This subpackage contains different cluster managers for the SastLLM project.
+This package contains embedding helpers used before clustering.
+
+The clustering phase itself lives in `sastllm.clustering`.
 """
 
-from .clusterer import Clusterer
 from .embedder import Embedder
 
-__all__ = ["Clusterer", "Embedder"]
+__all__ = ["Embedder"]

@@ -106,7 +106,7 @@ Used by:
 - `sastllm cluster --mode train`
 - `sastllm cluster --mode test`
 
-Note: `search.random_state` is present in config, while the current `Clusterer` uses `random_state=42` internally.
+Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation.
 
 ## `classification.yaml`
 

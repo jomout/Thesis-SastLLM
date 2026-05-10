@@ -13,8 +13,10 @@ sastllm cluster --mode test
 Implementation paths:
 
 - Pipeline wrapper: `src/scripts/pipelines.py::cluster_functionalities`
-- Stage processor: `src/sastllm/processors/tag_processor.py::TagProcessor`
-- Clustering model: `src/sastllm/cluster/clusterer.py::Clusterer`
+- Stage service: `src/sastllm/clustering/service.py::FunctionalityClusteringService`
+- Config parser: `src/sastllm/clustering/config.py`
+- Qdrant source adapter: `src/sastllm/clustering/sources.py`
+- Clustering model: `src/sastllm/clustering/kmeans.py::MiniBatchKMeansClusterer`
 - Embedding source: `src/sastllm/db/managers/embeddings_manager.py`
 
 ## Input
@@ -62,7 +64,7 @@ clustering:
 
 ## Model
 
-`Clusterer` uses `sklearn.cluster.MiniBatchKMeans`.
+`MiniBatchKMeansClusterer` uses `sklearn.cluster.MiniBatchKMeans`.
 
 Important behavior:
 
