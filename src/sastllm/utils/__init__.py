@@ -6,10 +6,11 @@ This subpackage contains different utils for the SastLLM project.
 
 from .custom_llm import CustomLLM
 from .normalizer import Normalizer
-from .repository_encoder import RepositoryEncoder
+from .observability import count_parameters, log_duration
 
 __all__ = [
     "CustomLLM",
     "Normalizer",
-    "RepositoryEncoder",
+    "count_parameters",
+    "log_duration",
 ]

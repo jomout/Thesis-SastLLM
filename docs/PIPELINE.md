@@ -88,7 +88,7 @@ They do not run dataset loading, LLM generation, splitting, or embedding creatio
 - `sastllm split` currently calls `split_repositories()` only. The available `embed_all_repositories()` helper is present but commented out in `src/scripts/pipelines.py`.
 - Classification filters repositories with `processed=true`, so trigger propagation from snippets to files to repositories matters.
 - Classification treats every label other than exact `benign` as `malicious`.
-- The classifier config model uses `l1_lambda`; the current YAML key is `l1_param`.
+- The classification config accepts `l1_param` as an alias for the runtime `l1_lambda` field.
 - Repository classification assumes repository ids behave like dense, 1-based indices when building data module indices.
 
 ## Thesis interpretation

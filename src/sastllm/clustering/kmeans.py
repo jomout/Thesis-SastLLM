@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import joblib
@@ -98,18 +99,22 @@ class MiniBatchKMeansClusterer:
         if k <= 0:
             raise ValueError("k must be > 0.")
 
-        logger.info("Fitting MiniBatchKMeans with k=%s.", k)
+        logger.info("Fitting MiniBatchKMeans", k=k, batch_size=batch_size)
         self.kmeans = self._fit_new_model(source, k=k, batch_size=batch_size)
         self.n_clusters = k
-        logger.info("MiniBatchKMeans training completed.")
+        logger.info("MiniBatchKMeans training completed", k=k)
 
     def predict_batches(self, source: EmbeddingSource, *, batch_size: int = 1000) -> Iterator[ClusterAssignmentBatch]:
         if self.kmeans is None:
             raise RuntimeError("Model must be fit or loaded before prediction.")
 
+        total = 0
         for ids, vectors in normalize_batches(source, batch_size):
             labels = self.kmeans.predict(vectors)
+            total += len(ids)
+            logger.debug("Predicted clustering batch", batch_size=len(ids), total=total)
             yield ClusterAssignmentBatch(functionality_ids=ids, cluster_ids=labels.astype(np.int64))
+        logger.info("Cluster prediction completed", samples=total)
 
     def predict(self, source: EmbeddingSource, *, batch_size: int = 1000) -> np.ndarray:
         batches = [
@@ -162,12 +167,19 @@ class MiniBatchKMeansClusterer:
         logger.info("Loaded clustering model from %s.", model_path)
 
     def _fit_new_model(self, source: EmbeddingSource, *, k: int, batch_size: int) -> MiniBatchKMeans:
+        start = perf_counter()
         model = MiniBatchKMeans(n_clusters=k, batch_size=batch_size, random_state=self.random_state)
         warmup: list[np.ndarray] = []
         warmup_size = 0
         initialized = False
+        batches = 0
+        samples = 0
+        vector_dim: int | None = None
 
         for _, vectors in normalize_batches(source, batch_size):
+            batches += 1
+            samples += len(vectors)
+            vector_dim = int(vectors.shape[1]) if vectors.ndim == 2 else None
             if not initialized:
                 warmup.append(vectors)
                 warmup_size += len(vectors)
@@ -175,6 +187,7 @@ class MiniBatchKMeansClusterer:
                     model.fit(np.concatenate(warmup, axis=0))
                     initialized = True
                     warmup = []
+                    logger.debug("Initialized MiniBatchKMeans centers", warmup_samples=warmup_size, k=k)
             else:
                 model.partial_fit(vectors)
 
@@ -186,6 +199,14 @@ class MiniBatchKMeansClusterer:
                 raise ValueError(f"Cannot fit k={k}; only {len(warmup_matrix)} embeddings are available.")
             model.fit(warmup_matrix)
 
+        logger.info(
+            "MiniBatchKMeans fit pass completed",
+            k=k,
+            batches=batches,
+            samples=samples,
+            vector_dim=vector_dim,
+            elapsed_seconds=round(perf_counter() - start, 3),
+        )
         return model
 
     @staticmethod
