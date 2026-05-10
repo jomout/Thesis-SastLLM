@@ -25,10 +25,12 @@ class TreeSitterGenerator:
         self.build_dir = build_dir
         self.lib_path = os.path.join(build_dir, lib_name)
         self.parsers = {}
-        os.makedirs(build_dir, exist_ok=True)
 
         self._load_config()
-        self._build_shared_library()
+
+        if not os.path.exists(self.lib_path):
+            self._build_shared_library()
+
         self._init_parsers()
 
     def _load_config(self):
@@ -56,12 +58,10 @@ class TreeSitterGenerator:
 
         logger.debug("Building shared library with:", grammar_paths)
         self._build_library(self.lib_path, grammar_paths)
-        
-    
+
     @staticmethod
     def _deprecate(old: str, new: str):
         logging.warning(f"{old} is deprecated. Use {new} instead.")
-        
 
     def _build_library(self, output_path: str, repo_paths: List[str]) -> bool:
         """
@@ -92,15 +92,12 @@ class TreeSitterGenerator:
         if max(source_mtimes) <= output_mtime:
             return False
 
-        # local import saves import time in the common case that nothing is compiled
         try:
             from distutils.ccompiler import new_compiler
             from distutils.unixccompiler import UnixCCompiler
 
         except ImportError as err:
-            raise RuntimeError(
-                "Failed to import distutils. You may need to install setuptools."
-            ) from err
+            raise RuntimeError("Failed to import distutils. You may need to install setuptools.") from err
 
         compiler = new_compiler()
         if isinstance(compiler, UnixCCompiler):
@@ -129,7 +126,6 @@ class TreeSitterGenerator:
                 target_lang="c++" if cpp else "c",
             )
         return True
-    
 
     def load_language(self, lib_path: str, lang: str) -> Language:
         lib = cdll.LoadLibrary(lib_path)
@@ -137,7 +133,6 @@ class TreeSitterGenerator:
         language_function.restype = c_void_p
         ptr = language_function()
         return Language(ptr)
-        
 
     def _init_parsers(self):
         for lang in self.config["languages"]:

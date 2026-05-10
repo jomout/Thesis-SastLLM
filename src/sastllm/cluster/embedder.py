@@ -68,7 +68,7 @@ class Embedder:
             computed = {i: emb for i, emb in zip(missing_ids, new_embeddings)}
         else:
             computed = {}
-            logger.info("All items found in db cache.")
+            logger.debug("All items found in db cache.")
 
         # Collect final embeddings (from db + newly computed)
         embeddings = []

@@ -63,7 +63,7 @@ def split_dataset() -> None:
     test_size = config["split"]["testing"]["ratio"]
 
     database_splitter = DatasetSplitter(model_name=model_name)
-    database_splitter.embed_all_repositories()
+    # database_splitter.embed_all_repositories()
     database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 
 
@@ -78,7 +78,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
-    processor = TagProcessor(batch_size=100, collection_name=collection_name)
+    processor = TagProcessor(collection_name=collection_name)
 
     try:
         processor.run(mode=mode)

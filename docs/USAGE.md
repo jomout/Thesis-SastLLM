@@ -1,345 +1,174 @@
 # Usage
 
-This document describes the command-line interface of the **SAST-LLM** framework and the recommended execution flows used in the thesis experiments.
+This document lists the SAST-LLM CLI commands and common execution flows.
 
-## CLI overview
-
-Display the available commands and options:
+## CLI
 
 ```bash
 sastllm --help
 ```
 
-The CLI initializes the project environment on startup by:
+The CLI loads `.env` and configures logging before running a command.
 
-- loading environment variables from `.env`
-- configuring application logging
-- preparing the runtime for pipeline execution
+## Commands
 
-## Available commands
-
-### Dataset preparation
-
-#### `download_benign_dataset`
-
-Downloads the benign dataset used in the experiments.
-
-```bash
-sastllm download_benign_dataset
-```
-
-This command downloads the **CodeSearchNet** dataset and stores it in the configured local dataset directory.
-
----
-
-#### `load`
-
-Loads the local dataset into the database.
+### Dataset ingestion
 
 ```bash
 sastllm load
 ```
 
-This command parses the local repository dataset and inserts the corresponding records into the database, including repository-level and snippet-level information.
+Loads the dataset from `configs/base.yaml -> paths.dataset`, discovers supported source files, chunks them, and inserts repository/file/snippet rows into PostgreSQL.
 
----
+Reference: [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.md)
 
-#### `split`
-
-Splits the dataset into the required subsets.
+### Dataset download
 
 ```bash
-sastllm split
+sastllm download_benign_dataset
 ```
 
-This command performs dataset splitting for the experimental pipeline, typically producing the training, validation, and test partitions required by later stages.
-
----
+Downloads the benign CodeSearchNet-derived dataset using `src/scripts/download_dataset.py`.
 
 ### Functionality generation
 
-#### `generate_functionalities`
-
-Generates functionality descriptions for code snippets using the configured LLM.
-
 ```bash
 sastllm generate_functionalities
 ```
 
-This command processes code snippets stored in the database and produces short functionality descriptions that are later used for semantic clustering.
+Uses the configured LLM to generate functionality descriptions and normalized tags for unprocessed snippets.
 
----
+Reference: [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md)
 
-#### `generate_functionalities_batch_api`
-
-Generates functionality descriptions using the OpenAI Batch API.
+### Batch API functionality generation
 
 ```bash
 sastllm generate_functionalities_batch_api
 ```
 
-This command is intended for larger-scale functionality generation. It prepares batch requests, submits them to the API, and processes the returned outputs back into the local pipeline.
+Creates OpenAI Batch API JSONL request files, submits them, polls until completion, and downloads raw output/error files.
 
----
+Current output directories:
 
-#### `load_cache_functionalities`
+```text
+api_batches_extra/
+batch_results_extra/
+```
 
-Loads previously generated functionality descriptions from a local directory.
+Important: downloaded Batch API result files are not automatically parsed into PostgreSQL by this command.
+
+### Cached functionality import
 
 ```bash
 sastllm load_cache_functionalities /path/to/cached_functionalities
 ```
 
-Use this command when functionality descriptions have already been generated and stored externally, and should be imported without repeating the LLM inference step.
+Loads JSON files named like `functionalities_<snippet_id>.json`, inserts functionality rows, and marks snippets processed.
 
----
+### Split
+
+```bash
+sastllm split
+```
+
+Assigns train/test split values to repositories and updates Qdrant point payloads.
+
+Reference: [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md)
 
 ### Clustering
 
-#### `cluster`
-
-Clusters the generated functionality descriptions.
-
 ```bash
-sastllm cluster --mode train
-```
-
-Available modes:
-
-- `train`
-- `test`
-- `search`
-
-Examples:
-
-```bash
+sastllm cluster --mode search
 sastllm cluster --mode train
 sastllm cluster --mode test
-sastllm cluster --mode search
 ```
 
-The selected mode determines which subset or operational scenario is used during clustering.
+Modes:
 
----
+| Mode | Behavior |
+| --- | --- |
+| `search` | estimate `k`, save search model and plots |
+| `train` | fit MiniBatchKMeans on train embeddings and assign train cluster ids |
+| `test` | load trained clusterer and assign test cluster ids |
+
+Reference: [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)
 
 ### Classification
 
-#### `classify`
-
-Runs the repository classification stage.
-
-```bash
-sastllm classify --mode train
-```
-
-Available modes:
-
-- `train`
-- `test`
-
-Examples:
-
 ```bash
 sastllm classify --mode train
 sastllm classify --mode test
 ```
 
-This command performs repository-level classification based on the functionality-cluster representation produced by the previous stages.
+Modes:
 
----
+| Mode | Behavior |
+| --- | --- |
+| `train` | train classifier, save checkpoint, write train metrics |
+| `test` | load checkpoint, run test, write predictions and metrics |
 
-### End-to-end pipelines
+Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)
 
-#### `train`
-
-Runs the full training pipeline.
-
-```bash
-sastllm train
-```
-
-This command executes the training-stage pipeline as defined in the project implementation.
-
----
-
-#### `test`
-
-Runs the full testing pipeline.
-
-```bash
-sastllm test
-```
-
-This command executes the testing-stage pipeline as defined in the project implementation.
-
----
-
-## Recommended execution flows
-
-## 1. Full experimental pipeline from raw dataset
-
-This is the standard workflow when starting from the repository dataset.
-
-```bash
-# 1. Download benign repositories if needed
-sastllm download_benign_dataset
-
-# 2. Load the dataset into the database
-sastllm load
-
-# 3. Split the dataset
-sastllm split
-
-# 4. Generate snippet-level functionality descriptions
-sastllm generate_functionalities
-# or, for large-scale generation:
-# sastllm generate_functionalities_batch_api
-
-# 5. Cluster functionality descriptions
-sastllm cluster --mode train
-
-# 6. Train the classification stage
-sastllm classify --mode train
-
-# 7. Evaluate on the test split
-sastllm cluster --mode test
-sastllm classify --mode test
-```
-
-This workflow corresponds to the main thesis pipeline:
-
-1. dataset ingestion  
-2. dataset splitting  
-3. functionality generation  
-4. semantic clustering  
-5. repository-level classification  
-
----
-
-## 2. Training and testing through the pipeline wrappers
-
-If the project configuration already encapsulates the individual stages, the higher-level commands may be used instead.
+### Pipeline wrappers
 
 ```bash
 sastllm train
 sastllm test
 ```
 
-This is the most compact way to reproduce the predefined training and testing workflows implemented in the codebase.
-
----
-
-## 3. Reusing cached functionality descriptions
-
-If functionality descriptions have already been generated in a previous run, they can be reloaded directly.
-
-```bash
-sastllm load_cache_functionalities /path/to/cached_functionalities
-sastllm cluster --mode train
-sastllm classify --mode train
-```
-
-This avoids repeating the LLM generation stage and is useful for reproducibility experiments or repeated clustering and classification trials.
-
----
-
-## Example command sequence used in practice
-
-A typical sequence for a complete experiment is the following:
-
-```bash
-sastllm load
-sastllm split
-sastllm generate_functionalities
-sastllm cluster --mode train
-sastllm classify --mode train
-sastllm cluster --mode test
-sastllm classify --mode test
-```
-
-If batch-based functionality generation is preferred:
-
-```bash
-sastllm load
-sastllm split
-sastllm generate_functionalities_batch_api
-sastllm cluster --mode train
-sastllm classify --mode train
-sastllm cluster --mode test
-sastllm classify --mode test
-```
-
-## Input and data assumptions
-
-The CLI assumes that:
-
-- the local dataset paths are correctly configured in the project configuration files
-- the required database is accessible
-- the `.env` file contains the necessary environment variables
-- snippet extraction and repository loading are supported by the dataset format used in the thesis experiments
-
-A typical dataset structure is expected to follow a repository-based organization such as:
+Current wrapper behavior:
 
 ```text
-dataset/
-  malware/
-    repo_1/
-    repo_2/
-    ...
-  benign/
-    repo_a/
-    repo_b/
-    ...
+train -> cluster --mode train -> classify --mode train
+test  -> cluster --mode test  -> classify --mode test
 ```
 
-The exact paths are determined by the project configuration.
+These wrappers do not execute loading, functionality generation, embedding creation, or splitting.
 
-## Logging
-
-Logging is initialized automatically when the CLI starts.
-
-Logs provide visibility into:
-
-- project initialization
-- dataset loading
-- functionality generation
-- clustering
-- classification
-- training and testing pipelines
-
-The logger used by the CLI is obtained through the project logging utilities:
-
-- `setup_logging()`
-- `get_logger(__name__)`
-
-## Notes for thesis usage
-
-For the purposes of the thesis, the commands can be grouped into the following conceptual stages:
-
-| Thesis Stage | CLI Commands |
-| --- | --- |
-| Dataset acquisition | `download_benign_dataset` |
-| Dataset ingestion | `load` |
-| Dataset partitioning | `split` |
-| Functionality extraction | `generate_functionalities`, `generate_functionalities_batch_api`, `load_cache_functionalities` |
-| Semantic clustering | `cluster --mode ...` |
-| Repository classification | `classify --mode ...` |
-| Wrapped execution | `train`, `test` |
-
-## Minimal command reference
+## Typical full workflow
 
 ```bash
-sastllm download_benign_dataset
 sastllm load
-sastllm split
 sastllm generate_functionalities
-sastllm generate_functionalities_batch_api
-sastllm load_cache_functionalities /path/to/dir
+# ensure embeddings exist in Qdrant for functionalities.tag
+sastllm split
 sastllm cluster --mode train
-sastllm cluster --mode test
-sastllm cluster --mode search
 sastllm classify --mode train
+sastllm cluster --mode test
 sastllm classify --mode test
-sastllm train
-sastllm test
 ```
+
+## Cached functionality workflow
+
+```bash
+sastllm load
+sastllm load_cache_functionalities /path/to/cached_functionalities
+# ensure embeddings exist in Qdrant
+sastllm split
+sastllm cluster --mode train
+sastllm classify --mode train
+```
+
+## Model reuse workflow
+
+```bash
+sastllm cluster --mode test
+sastllm classify --mode test
+```
+
+Use this when:
+
+- `configs/clustering.yaml` points to the trained clusterer
+- `configs/classification.yaml` points to the trained classifier directory
+- test embeddings exist and have Qdrant payload `split=test`
+
+## Output locations
+
+| Location | Content |
+| --- | --- |
+| `cache/functionalities-<llm_type>/` | parsed functionality caches |
+| `api_batches_extra/` | Batch API request JSONL files |
+| `batch_results_extra/` | downloaded Batch API outputs/errors |
+| `models/clustering/trained_models/` | clustering joblib files |
+| `models/classification/trained_models/` | classifier checkpoints, configs, metrics |
+| `plots/clustering/searching/` | clustering search plots |

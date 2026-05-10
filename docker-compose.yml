@@ -1,7 +1,7 @@
 services:
-  sastllm_database:
-    image: postgres
-    container_name: sastllm_db
+  code_database:
+    image: postgres:18-alpine
+    container_name: code_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -9,15 +9,16 @@ services:
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:
-      - pg_sastllm_data:/var/lib/postgresql
+      - pg_code_data:/var/lib/postgresql
       # Load initial schema and triggers on first database initialization
-      - ./database/00__init.sql:/docker-entrypoint-initdb.d/00__init.sql:ro
-      - ./database/01__triggers.sql:/docker-entrypoint-initdb.d/01__triggers.sql:ro
+      # - ./database/00__init.sql:/docker-entrypoint-initdb.d/00__init.sql:ro
+      # - ./database/01__triggers.sql:/docker-entrypoint-initdb.d/01__triggers.sql:ro
+      - ./database/backup-2026-4-24.sql:/docker-entrypoint-initdb.d/backup-2026-4-24.sql:ro
     restart: unless-stopped
 
-  sastllm_qdrant:
-    image: qdrant/qdrant
-    container_name: sastllm_qdrant
+  code_embeddings:
+    image: qdrant/qdrant:v1.17
+    container_name: code_qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"
@@ -30,4 +31,4 @@ services:
       QDRANT__SERVICE__GRPC_PORT: 6334
 
 volumes:
-  pg_sastllm_data:
+  pg_code_data:

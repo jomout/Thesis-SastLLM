@@ -20,6 +20,7 @@ This README provides the central overview of the project. More detailed document
 - `docs/CONFIG.md` – YAML configuration files and their roles
 - `docs/PIPELINE.md` – end-to-end pipeline and phase descriptions
 - `docs/DB_SCHEMA.md` – database schema and model relationships
+- `docs/README.md` – documentation index and stage-specific reference files
 
 ---
 
@@ -102,7 +103,7 @@ The exact repository structure may evolve, but the project is conceptually organ
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.13+
 - a virtual environment
 - the dependencies required by the project
 - valid environment variables in `.env`
@@ -120,7 +121,7 @@ Depending on your setup, you may also need:
 Create and activate a virtual environment:
 
 ```bash
-python3.12 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -169,7 +170,7 @@ Current example:
 
 ```yaml
 paths:
-  dataset: "../test_pipeline/test_dataset"
+  dataset: ".dataset/thesis_dataset"
 ```
 
 The project expects a repository-based dataset organization. A typical dataset layout is:
@@ -234,11 +235,11 @@ A standard end-to-end execution flow is:
 # 1. Load the dataset
 sastllm load
 
-# 2. Split the dataset
-sastllm split
-
-# 3. Generate snippet functionalities
+# 2. Generate snippet functionalities
 sastllm generate_functionalities
+
+# 3. Ensure functionality embeddings exist in Qdrant, then split
+sastllm split
 
 # 4. Train clustering
 sastllm cluster --mode train
@@ -260,7 +261,14 @@ sastllm train
 sastllm test
 ```
 
-These wrapper commands depend on the current project implementation and are intended to execute the predefined training and testing pipelines.
+Current wrapper behavior is:
+
+```text
+train -> cluster --mode train -> classify --mode train
+test  -> cluster --mode test  -> classify --mode test
+```
+
+They do not run dataset loading, functionality generation, embedding creation, or splitting.
 
 ---
 
@@ -321,6 +329,7 @@ This replaces the outdated README command set such as `setup`, `eval`, and `clas
 - The current pipeline is centered on the four-phase thesis architecture rather than the older processor-centric description.
 - If you reuse cached functionality descriptions, make sure they are compatible with the current clustering and classification setup.
 - If you change the clustering dimensionality or the number of clusters, ensure that the classifier configuration remains consistent with that representation.
+- `sastllm split` currently assumes embeddings already exist in Qdrant; see `docs/03_EMBEDDING_AND_SPLITTING.md`.
 
 ---
 
@@ -347,5 +356,6 @@ For a new user, the recommended reading order is:
 2. `docs/CONFIG.md`
 3. `docs/USAGE.md`
 4. `docs/PIPELINE.md`
+5. `docs/README.md` for the complete documentation index
 
 That sequence gives the cleanest path from installation to execution to understanding the system design.
