@@ -3,8 +3,10 @@ app:
 
 log:
   level: INFO
-  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
   file: logs/sastllm.log
+  file_level: INFO
+  max_bytes: 10485760
+  backup_count: 5
 
 paths:
   dataset: ".dataset/thesis_dataset"
