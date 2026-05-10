@@ -6,11 +6,14 @@ from typing import Literal
 import torch
 from sklearn.model_selection import train_test_split
 
+from sastllm.configs import get_logger
 from sastllm.db import RepositoryManager
 from sastllm.dtos import GetClassificationRepositoryDto
 from sastllm.ml import RepositoryTensorDataset
 
 from .encoders import RepositoryEncoderProtocol
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -40,23 +43,49 @@ class RepositoryDatasetBuilder:
         if not repositories:
             raise RuntimeError("No processed repositories with cluster ids returned from DB.")
 
+        label_counts: dict[str, int] = {}
+        with_clusters = 0
+        for repo in repositories:
+            label = "benign" if repo.label == "benign" else "malicious"
+            label_counts[label] = label_counts.get(label, 0) + 1
+            if repo.data:
+                with_clusters += 1
+        logger.info(
+            "Fetched repositories for classification",
+            repositories=len(repositories),
+            repositories_with_clusters=with_clusters,
+            label_counts=label_counts,
+        )
+
         encoding = self.encoder.encode(self._normalize_labels(repositories))
         dataset = RepositoryTensorDataset(
             ids=torch.tensor(encoding.repository_ids, dtype=torch.long),
             X=torch.tensor(encoding.features, dtype=torch.float32),
             y=torch.tensor(encoding.labels, dtype=torch.long),
         )
+        nonzero = int((dataset.X != 0).sum().item())
+        total_features = int(dataset.X.numel())
+        logger.info(
+            "Encoded repository dataset",
+            samples=len(dataset),
+            feature_dim=int(dataset.X.shape[1]),
+            nonzero_features=nonzero,
+            feature_density=round(nonzero / total_features, 6) if total_features else 0.0,
+        )
 
         id_to_index = {int(repo_id): index for index, repo_id in enumerate(encoding.repository_ids.tolist())}
         train_ids, train_labels = self._ids_and_labels("train")
         test_ids, _ = self._ids_and_labels("test")
+        logger.info("Repository split ids loaded", train_ids=len(train_ids), test_ids=len(test_ids), validation_size=validation_size)
 
         if not train_ids:
+            test_indices = [id_to_index[repo_id] for repo_id in test_ids if repo_id in id_to_index]
+            logger.warning("No train repositories found; building test-only bundle", test_indices=len(test_indices))
             return DatasetBundle(
                 dataset=dataset,
                 train_indices=[],
                 val_indices=[],
-                test_indices=[id_to_index[repo_id] for repo_id in test_ids if repo_id in id_to_index],
+                test_indices=test_indices,
             )
 
         train_ids_arr, val_ids_arr = train_test_split(
@@ -66,12 +95,19 @@ class RepositoryDatasetBuilder:
             random_state=self.seed,
         )
 
-        return DatasetBundle(
+        bundle = DatasetBundle(
             dataset=dataset,
             train_indices=[id_to_index[repo_id] for repo_id in train_ids_arr if repo_id in id_to_index],
             val_indices=[id_to_index[repo_id] for repo_id in val_ids_arr if repo_id in id_to_index],
             test_indices=[id_to_index[repo_id] for repo_id in test_ids if repo_id in id_to_index],
         )
+        logger.info(
+            "Built classification dataset bundle",
+            train_samples=len(bundle.train_indices),
+            val_samples=len(bundle.val_indices),
+            test_samples=len(bundle.test_indices),
+        )
+        return bundle
 
     def _ids_and_labels(self, split: Literal["train", "test"]) -> tuple[list[int], list[int]]:
         ids: list[int] = []

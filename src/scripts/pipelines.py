@@ -17,6 +17,7 @@ from sastllm.processors import (
     SnippetProcessor,
 )
 from sastllm.utils.dataset_splitter import DatasetSplitter
+from sastllm.utils.observability import log_duration
 
 from .utils import get_model, load_yaml
 
@@ -38,12 +39,13 @@ def load_dataset() -> None:
             logger.error(msg)
             raise ValueError(msg)
 
-        logger.info(f"Loading dataset from: {sastllm_dataset}")
+        logger.info("Loading dataset", dataset_path=sastllm_dataset)
 
         loader = CodeProcessor(
             root_path=sastllm_dataset,
         )
-        loader.run()
+        with log_duration(logger, "dataset_load", dataset_path=sastllm_dataset):
+            loader.run()
 
     except Exception as e:
         logger.error(f"Dataset loading failed: {e}")
@@ -62,9 +64,11 @@ def split_dataset() -> None:
     train_size = config["split"]["training"]["ratio"]
     test_size = config["split"]["testing"]["ratio"]
 
+    logger.info("Split configuration loaded", model_name=model_name, train_size=train_size, test_size=test_size)
     database_splitter = DatasetSplitter(model_name=model_name)
-    # database_splitter.embed_all_repositories()
-    database_splitter.split_repositories(train_size=train_size, test_size=test_size)
+    with log_duration(logger, "dataset_split", model_name=model_name, train_size=train_size, test_size=test_size):
+        # database_splitter.embed_all_repositories()
+        database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 
 
 def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
@@ -78,10 +82,12 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
+    logger.info("Clustering configuration loaded", mode=mode, collection_name=collection_name)
     processor = FunctionalityClusteringService(collection_name=collection_name)
 
     try:
-        processor.run(mode=mode)
+        with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):
+            processor.run(mode=mode)
     except Exception as e:
         logger.error(f"Functionality clustering failed: {e}")
         raise RuntimeError(f"Functionality clustering failed: {e}") from e
@@ -92,8 +98,10 @@ def generate_functionalities_batch_api() -> None:
     batch_files_dir = Path("api_batches_extra")
     batch_files_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Generating batch API files", model=model, batch_files_dir=str(batch_files_dir))
     gen = BatchFilesGenerator(model=model)
-    gen.create_api_batches(output_dir=batch_files_dir)
+    with log_duration(logger, "generate_functionality_batch_files", model=model):
+        gen.create_api_batches(output_dir=batch_files_dir)
 
     batch_results_dir = Path("batch_results_extra")
     batch_results_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +112,8 @@ def generate_functionalities_batch_api() -> None:
         poll_interval=60,  # check every 60 seconds
         max_wait_hours=30,
     )
-    processor.process_all()
+    with log_duration(logger, "process_functionality_batch_files", batch_files_dir=str(batch_files_dir), output_dir=str(batch_results_dir)):
+        processor.process_all()
 
 
 def generate_functionalities() -> None:
@@ -122,7 +131,8 @@ def generate_functionalities() -> None:
     )
 
     try:
-        processor.run()
+        with log_duration(logger, "functionality_generation", batch_size=processor.batch_size, sleep_interval=processor.sleep_interval):
+            processor.run()
     except Exception as e:
         logger.error(f"Functionality generation failed: {e}")
         raise RuntimeError(f"Functionality generation failed: {e}") from e
@@ -135,16 +145,28 @@ def classify_repositories(mode: Literal["train", "test"]) -> None:
     logger.info("Classifying repositories by their clusters using ML.")
 
     config = ClassificationConfig.from_yaml(mode=mode)
+    logger.info(
+        "Classification configuration loaded",
+        mode=mode,
+        model=config.model.name,
+        k=config.training.k,
+        batch_size=config.training.batch_size,
+        epochs=config.training.epochs,
+    )
     service = RepositoryClassificationService(config=config)
 
     try:
         if mode == "train":
-            model_dir = service.fit()
+            with log_duration(logger, "repository_classification_train"):
+                model_dir = service.fit()
             print(f"Model saved to: {model_dir}")
-            service.evaluate(split="train", model_dir=model_dir)
+            with log_duration(logger, "repository_classification_evaluate", split="train", model_dir=str(model_dir)):
+                service.evaluate(split="train", model_dir=model_dir)
         else:
-            service.test()
-            service.evaluate(split="test")
+            with log_duration(logger, "repository_classification_test"):
+                service.test()
+            with log_duration(logger, "repository_classification_evaluate", split="test"):
+                service.evaluate(split="test")
 
     except Exception as e:
         logger.error(f"Repository classification failed: {e}")
@@ -179,9 +201,17 @@ def load_functionalities_from_dir(directory: str) -> None:
             all_snippets.append(UpdateSnippetDto(snippet_id=snippet_id, processed=True))
 
     functionality_db = FunctionalityManager()
-    functionality_db.add_bulk_functionalities(all_functionalities)
+    logger.info("Loading cached functionalities", directory=directory, files=len(glob.glob(f"{directory}/*.json")))
+    with log_duration(
+        logger,
+        "load_cached_functionalities",
+        directory=directory,
+        functionalities=len(all_functionalities),
+        snippets=len(all_snippets),
+    ):
+        functionality_db.add_bulk_functionalities(all_functionalities)
 
-    snippet_db = SnippetManager()
-    snippet_db.update_bulk_snippets(all_snippets)
+        snippet_db = SnippetManager()
+        snippet_db.update_bulk_snippets(all_snippets)
 
     logger.info(f"Inserted {len(all_functionalities)} functionalities from {directory}")

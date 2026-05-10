@@ -15,6 +15,7 @@ from sastllm.db import RepositoryManager
 from sastllm.ml import RepositoryDataModule
 from sastllm.ml.models import RepositoryClassifierModule, build_model
 from sastllm.ml.training import best_checkpoint_path, build_trainer
+from sastllm.utils.observability import count_parameters, log_duration
 
 from .config import ClassificationConfig
 from .data import RepositoryDatasetBuilder
@@ -47,6 +48,14 @@ class RepositoryClassificationService:
         self.repository_manager = repository_manager or RepositoryManager()
         self.encoder = encoder or ClusterDistributionEncoder(num_clusters=config.training.k, labels=self.labels)
         seed_everything(config.training.seed, workers=True)
+        logger.info(
+            "Initializing repository classification service",
+            model=config.model.name,
+            encoder=self.encoder.__class__.__name__,
+            k=config.training.k,
+            batch_size=config.training.batch_size,
+            seed=config.training.seed,
+        )
 
         self.dataset_builder = RepositoryDatasetBuilder(
             repository_manager=self.repository_manager,
@@ -54,7 +63,8 @@ class RepositoryClassificationService:
             batch_size=config.training.batch_size,
             seed=config.training.seed,
         )
-        self.bundle = self.dataset_builder.build(validation_size=config.training.validation_size)
+        with log_duration(logger, "classification_dataset_build", validation_size=config.training.validation_size):
+            self.bundle = self.dataset_builder.build(validation_size=config.training.validation_size)
 
     def fit(self) -> Path:
         if self.config.save_model_dir is None:
@@ -64,7 +74,8 @@ class RepositoryClassificationService:
         model = self._build_model()
         trainer = build_trainer(max_epochs=self.config.training.epochs)
 
-        trainer.fit(model, datamodule=datamodule)
+        with log_duration(logger, "lightning_fit", model=self.config.model.name, epochs=self.config.training.epochs):
+            trainer.fit(model, datamodule=datamodule)
 
         model_dir = self.config.save_model_dir / f"model_{_timestamp()}"
         model_dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +86,8 @@ class RepositoryClassificationService:
     def test(self, model_dir: str | Path | None = None) -> None:
         resolved_model_dir = Path(model_dir) if model_dir is not None else self._load_model_dir()
         model = self._load_checkpoint(resolved_model_dir)
-        self._trainer().test(model, datamodule=self._datamodule())
+        with log_duration(logger, "lightning_test", model_dir=str(resolved_model_dir)):
+            self._trainer().test(model, datamodule=self._datamodule())
 
     def predict(
         self,
@@ -87,12 +99,20 @@ class RepositoryClassificationService:
         resolved_model_dir = Path(model_dir) if model_dir is not None else self._load_model_dir()
         model = self._load_checkpoint(resolved_model_dir)
         dataloader = self._datamodule().dataloader_for_split(split)
-        predictions = self._trainer().predict(model, dataloaders=dataloader)
+        with log_duration(logger, "lightning_predict", split=split, model_dir=str(resolved_model_dir)):
+            predictions = self._trainer().predict(model, dataloaders=dataloader)
 
         ids = torch.cat([batch[0].cpu() for batch in predictions]).numpy()  # type: ignore[index]
         logits = torch.cat([batch[1].cpu() for batch in predictions]).numpy()  # type: ignore[index]
         probabilities = torch.softmax(torch.tensor(logits), dim=1).numpy()
         predicted_indices = probabilities.argmax(axis=1)
+        logger.info(
+            "Prediction tensors collected",
+            split=split,
+            samples=len(ids),
+            logits_shape=tuple(logits.shape),
+            probabilities_shape=tuple(probabilities.shape),
+        )
 
         results: dict[int, dict] = {}
         for repository_id, predicted_index in zip(ids, predicted_indices):
@@ -157,7 +177,7 @@ class RepositoryClassificationService:
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
         class_counts = dict(zip(*np.unique(labels, return_counts=True)))
-        return build_model(
+        model = build_model(
             name=self.config.model.name,
             input_dim=int(self.bundle.dataset.X.shape[1]),
             output_dim=len(self.labels.index_to_label),
@@ -168,6 +188,17 @@ class RepositoryClassificationService:
             hidden_dims=self.config.model.hidden_dims,
             dropout=self.config.model.dropout,
         )
+        total_parameters, trainable_parameters = count_parameters(model)
+        logger.info(
+            "Built repository classifier model",
+            model=self.config.model.name,
+            input_dim=int(self.bundle.dataset.X.shape[1]),
+            output_dim=len(self.labels.index_to_label),
+            class_counts={int(k): int(v) for k, v in class_counts.items()},
+            total_parameters=total_parameters,
+            trainable_parameters=trainable_parameters,
+        )
+        return model
 
     def _load_checkpoint(self, model_dir: Path) -> RepositoryClassifierModule:
         checkpoint = model_dir / "best.ckpt"
@@ -179,7 +210,14 @@ class RepositoryClassificationService:
         model_class = self._model_class()
         model = model_class.load_from_checkpoint(str(checkpoint), class_counts=class_counts)
         model.eval()
-        logger.info("Loaded checkpoint: %s.", checkpoint)
+        total_parameters, trainable_parameters = count_parameters(model)
+        logger.info(
+            "Loaded classifier checkpoint",
+            checkpoint=str(checkpoint),
+            model=self.config.model.name,
+            total_parameters=total_parameters,
+            trainable_parameters=trainable_parameters,
+        )
         return model
 
     def _model_class(self):
@@ -218,6 +256,12 @@ class RepositoryClassificationService:
                 indent=2,
             ),
             encoding="utf-8",
+        )
+        logger.info(
+            "Persisted classifier checkpoint",
+            model_dir=str(model_dir),
+            checkpoint=str(destination),
+            source_type=source_type,
         )
 
     def _trainer(self):
