@@ -100,9 +100,7 @@ class RepositoryPredictionModel(Base):
     flags_json = Column(JSONB, nullable=True)  # ["F1", "F6", ...]
     justification = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
     repository = relationship("RepositoryModel")

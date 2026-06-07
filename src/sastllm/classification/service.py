@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from lightning import seed_everything
@@ -14,7 +15,7 @@ from sastllm.configs import get_logger
 from sastllm.db import RepositoryManager
 from sastllm.ml import RepositoryDataModule
 from sastllm.ml.models import RepositoryClassifierModule, build_model
-from sastllm.ml.training import best_checkpoint_path, build_trainer
+from sastllm.ml.training import AccuracyHistoryCallback, AccuracyHistoryRecord, best_checkpoint_path, build_trainer
 from sastllm.utils.observability import count_parameters, log_duration
 
 from .config import ClassificationConfig
@@ -23,6 +24,7 @@ from .encoders import ClusterDistributionEncoder, LabelMapping, RepositoryEncode
 from .metrics import compute_classification_metrics
 
 logger = get_logger(__name__)
+EvaluationSplit = Literal["train", "val", "test"]
 
 
 class RepositoryClassificationService:
@@ -42,6 +44,7 @@ class RepositoryClassificationService:
         labels: LabelMapping | None = None,
         repository_manager: RepositoryManager | None = None,
         encoder: RepositoryEncoderProtocol | None = None,
+        build_bundle: bool = True,
     ) -> None:
         self.config = config
         self.labels = labels or LabelMapping.from_split_config()
@@ -57,27 +60,73 @@ class RepositoryClassificationService:
             seed=config.training.seed,
         )
 
-        self.dataset_builder = RepositoryDatasetBuilder(
-            repository_manager=self.repository_manager,
-            encoder=self.encoder,
-            batch_size=config.training.batch_size,
-            seed=config.training.seed,
-        )
-        with log_duration(logger, "classification_dataset_build", validation_size=config.training.validation_size):
-            self.bundle = self.dataset_builder.build(validation_size=config.training.validation_size)
+        self.dataset_builder: RepositoryDatasetBuilder | None = None
+        self.bundle = None
+        if build_bundle:
+            self.dataset_builder = RepositoryDatasetBuilder(
+                repository_manager=self.repository_manager,
+                encoder=self.encoder,
+                batch_size=config.training.batch_size,
+                seed=config.training.seed,
+            )
+            with log_duration(logger, "classification_dataset_build", validation_size=config.training.validation_size):
+                self.bundle = self.dataset_builder.build(validation_size=config.training.validation_size)
 
-    def fit(self) -> Path:
+    def search(self) -> list[dict]:
+        if self.config.save_plots_dir is None:
+            raise ValueError("save_plots_dir is required for classification search.")
+        self.config.save_plots_dir.mkdir(parents=True, exist_ok=True)
+
+        results: list[dict] = []
+        runs = self.config.iter_search_configs()
+        logger.info("Starting classification grid search", runs=len(runs), save_plots_dir=str(self.config.save_plots_dir))
+        for run_name, run_config, overrides in runs:
+            logger.info("Starting classification search run", run_name=run_name, params=overrides)
+            history = AccuracyHistoryCallback()
+            service = RepositoryClassificationService(
+                config=run_config,
+                labels=self.labels,
+                repository_manager=self.repository_manager,
+            )
+            model_dir = service.fit(run_name=run_name, history_callback=history)
+            train_metrics = service.evaluate(model_dir=model_dir, split="train", persist=True)
+            val_metrics = service.evaluate(model_dir=model_dir, split="val", persist=True)
+            plot_path = self.config.save_plots_dir / f"{run_name}_accuracy.png"
+            _plot_accuracy_history(history.records, plot_path, title=run_name)
+            best_val_acc = max((record["val_acc"] for record in history.records if record["val_acc"] is not None), default=None)
+            final_train_acc = next((record["train_acc"] for record in reversed(history.records) if record["train_acc"] is not None), None)
+            result = {
+                "run_name": run_name,
+                "params": overrides,
+                "model_dir": str(model_dir),
+                "plot_path": str(plot_path),
+                "best_val_acc": best_val_acc,
+                "final_train_acc": final_train_acc,
+                "train_metrics": _compact_metrics(train_metrics),
+                "val_metrics": _compact_metrics(val_metrics),
+                "history": history.records,
+            }
+            results.append(result)
+            logger.info("Completed classification search run", **{k: v for k, v in result.items() if k != "history"})
+
+        summary_path = self.config.save_plots_dir / "search_summary.json"
+        summary_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+        logger.info("Classification grid search completed", runs=len(results), summary_path=str(summary_path))
+        return results
+
+    def fit(self, *, run_name: str | None = None, history_callback: AccuracyHistoryCallback | None = None) -> Path:
         if self.config.save_model_dir is None:
             raise ValueError("save_model_dir is required for training.")
 
         datamodule = self._datamodule()
         model = self._build_model()
-        trainer = build_trainer(max_epochs=self.config.training.epochs)
+        extra_callbacks = [history_callback] if history_callback is not None else None
+        trainer = build_trainer(max_epochs=self.config.training.epochs, extra_callbacks=extra_callbacks)
 
         with log_duration(logger, "lightning_fit", model=self.config.model.name, epochs=self.config.training.epochs):
             trainer.fit(model, datamodule=datamodule)
 
-        model_dir = self.config.save_model_dir / f"model_{_timestamp()}"
+        model_dir = self.config.save_model_dir / (run_name or f"model_{_timestamp()}")
         model_dir.mkdir(parents=True, exist_ok=True)
         self._persist_checkpoint(trainer, model_dir)
         logger.info("Training complete. Model saved to %s.", model_dir)
@@ -93,7 +142,7 @@ class RepositoryClassificationService:
         self,
         *,
         model_dir: str | Path | None = None,
-        split: Literal["train", "test"] = "test",
+        split: EvaluationSplit = "test",
         persist: bool = False,
     ) -> tuple[dict[int, dict], np.ndarray]:
         resolved_model_dir = Path(model_dir) if model_dir is not None else self._load_model_dir()
@@ -132,7 +181,7 @@ class RepositoryClassificationService:
 
         return results, probabilities
 
-    def evaluate(self, *, model_dir: str | Path | None = None, split: Literal["train", "test"] = "test", persist: bool = True) -> dict:
+    def evaluate(self, *, model_dir: str | Path | None = None, split: EvaluationSplit = "test", persist: bool = True) -> dict:
         resolved_model_dir = Path(model_dir) if model_dir is not None else self._load_model_dir()
         results, probabilities = self.predict(model_dir=resolved_model_dir, split=split, persist=persist)
         label_to_index = self.labels.label_to_index
@@ -161,6 +210,8 @@ class RepositoryClassificationService:
         return metrics
 
     def _datamodule(self) -> RepositoryDataModule:
+        if self.bundle is None:
+            raise RuntimeError("Classification dataset bundle has not been built.")
         return RepositoryDataModule(
             dataset=self.bundle.dataset,
             train_indices=self.bundle.train_indices,
@@ -174,6 +225,8 @@ class RepositoryClassificationService:
         return self._datamodule()
 
     def _build_model(self) -> RepositoryClassifierModule:
+        if self.bundle is None:
+            raise RuntimeError("Classification dataset bundle has not been built.")
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
         class_counts = dict(zip(*np.unique(labels, return_counts=True)))
@@ -201,6 +254,8 @@ class RepositoryClassificationService:
         return model
 
     def _load_checkpoint(self, model_dir: Path) -> RepositoryClassifierModule:
+        if self.bundle is None:
+            raise RuntimeError("Classification dataset bundle has not been built.")
         checkpoint = model_dir / "best.ckpt"
         if not checkpoint.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
@@ -275,3 +330,42 @@ class RepositoryClassificationService:
 
 def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _compact_metrics(metrics: dict) -> dict[str, float]:
+    keys = ("accuracy", "macro_f1", "weighted_f1", "auc_macro", "auc_weighted")
+    return {key: float(metrics[key]) for key in keys if key in metrics}
+
+
+def _plot_accuracy_history(records: list[AccuracyHistoryRecord], path: Path, *, title: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    train_epochs: list[int] = []
+    train_acc: list[float] = []
+    val_epochs: list[int] = []
+    val_acc: list[float] = []
+
+    for record in records:
+        train_value = record["train_acc"]
+        if train_value is not None:
+            train_epochs.append(record["epoch"])
+            train_acc.append(train_value)
+
+        val_value = record["val_acc"]
+        if val_value is not None:
+            val_epochs.append(record["epoch"])
+            val_acc.append(val_value)
+
+    plt.figure(figsize=(8, 5))
+    if train_acc:
+        plt.plot(train_epochs, train_acc, marker="o", label="train_acc")
+    if val_acc:
+        plt.plot(val_epochs, val_acc, marker="o", label="val_acc")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title(title)
+    plt.ylim(0.0, 1.0)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()

@@ -8,16 +8,15 @@ from .code_parser import CodeParser
 from .comment_stripper import CommentStripper
 from .tree_sitter_generator import TreeSitterGenerator
 
-BLOB_RE = re.compile(
-    r"['\"]([A-Za-z0-9+/=\s]{200,})['\"]", 
-    re.MULTILINE
-)
+BLOB_RE = re.compile(r"['\"]([A-Za-z0-9+/=\s]{200,})['\"]", re.MULTILINE)
+
 
 def scrub_long_strings(text: str) -> str:
     def replacer(m):
         s = m.group(1).replace("\n", "")
         h = hashlib.sha256(s.encode()).hexdigest()[:12]
         return f"[ENCODED_BLOB len={len(s)} sha256={h}]"
+
     return BLOB_RE.sub(replacer, text)
 
 
@@ -28,12 +27,11 @@ def _last_nonempty_index(lines: List[str]) -> int:
             return i
     return len(lines) - 1
 
+
 def _normalize_whitespace(text: str) -> str:
     """Delete consecutive blank lines and trim leading/trailing whitespace."""
-    compact = "\n".join(
-        line for line in text.splitlines() if line.strip()
-    )
-    return re.sub(r'\n+', '\n', compact.replace('\r\n', '\n')).strip()
+    compact = "\n".join(line for line in text.splitlines() if line.strip())
+    return re.sub(r"\n+", "\n", compact.replace("\r\n", "\n")).strip()
 
 
 class CodeChunker:
@@ -41,13 +39,8 @@ class CodeChunker:
     Chunks source code into semantically meaningful blocks based on AST structure
     and token count constraints.
     """
-    def __init__(
-        self,
-        *, 
-        encoding: str = "cl100k_base",
-        max_tokens: int = 100,
-        remove_comments: bool = False       
-    ) -> None:
+
+    def __init__(self, *, encoding: str = "cl100k_base", max_tokens: int = 100, remove_comments: bool = False) -> None:
         """
         Initializes the CodeChunker with a token budget and encoding scheme.
 
@@ -60,7 +53,7 @@ class CodeChunker:
         self.comment_stripper = CommentStripper(self.tree_sitter_gen)
         self.encoding = encoding
         self.max_tokens = max_tokens
-        
+
         self.remove_comments = remove_comments
 
     def _count_tokens(self, string: str, encoding_name: str) -> int:
@@ -77,7 +70,7 @@ class CodeChunker:
         encoding = tiktoken.get_encoding(encoding_name)
         num_tokens = len(encoding.encode(string))
         return num_tokens
-        
+
     def chunk_code(self, code: str, language: str) -> Dict:
         """
         Chunks the input code into segments constrained by token limits
@@ -116,7 +109,7 @@ class CodeChunker:
 
         chunks = {}
         chunk_no = 0
-        start_idx = 0         # zero-based inclusive
+        start_idx = 0  # zero-based inclusive
         token_budget = 0
         i = 0
 
@@ -143,7 +136,7 @@ class CodeChunker:
 
                 # Emit chunk
                 chunk_text = "\n".join(lines[start_idx:end_excl]).rstrip("\n")
-                
+
                 if self.remove_comments:
                     chunk_text = self.comment_stripper.strip(chunk_text, language=language)
 
@@ -153,7 +146,7 @@ class CodeChunker:
                     chunks[chunk_no] = {
                         "code": chunk_text,
                         "start_line": start_idx + 1,  # 1-based
-                        "end_line": end_excl,         # inclusive in 1-based
+                        "end_line": end_excl,  # inclusive in 1-based
                     }
                     chunk_no += 1
 
@@ -171,10 +164,10 @@ class CodeChunker:
             end_excl = last_idx + 1
             if end_excl > start_idx:
                 chunk_text = "\n".join(lines[start_idx:end_excl]).rstrip("\n")
-                
+
                 if self.remove_comments:
                     chunk_text = self.comment_stripper.strip(chunk_text, language=language)
-                    
+
                 chunk_text = _normalize_whitespace(chunk_text)
 
                 if chunk_text.strip():

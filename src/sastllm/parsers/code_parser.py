@@ -7,10 +7,10 @@ from tree_sitter import Node, Parser
 
 class CodeParser:
     """
-    A class for parsing source code using Tree-sitter and extracting important 
+    A class for parsing source code using Tree-sitter and extracting important
     semantic elements (e.g., classes, functions, comments) depending on the language.
     """
-    
+
     IMPORTANT_NODE_TYPES: Dict[str, Dict[str, str]] = {}
     COMMENT_NODES: Dict[str, Dict[str, str]] = {}
 
@@ -34,7 +34,6 @@ class CodeParser:
         for lang, mapping in data.items():
             normal[str(lang).lower()] = {str(k): str(v) for k, v in (mapping or {}).items()}
         return normal
-    
 
     def _get_parser(self, language: str) -> Parser:
         """
@@ -47,7 +46,6 @@ class CodeParser:
             ValueError: If the language is unsupported.
         """
         return self.tree_sitter_gen.get_parser(language=language)
-
 
     def _get_nodes_types(self, language: str, node_types: Dict[str, Dict[str, str]]) -> Dict[str, str]:
         """
@@ -65,10 +63,9 @@ class CodeParser:
         """
         return node_types[language]
 
-
     def _extract_nodes(
         self,
-        node: Node, 
+        node: Node,
         language: str,
         node_types: Dict[str, Dict[str, str]],
     ) -> List[Tuple[Node, str]]:
@@ -84,38 +81,24 @@ class CodeParser:
             List[Tuple[Node, str]]: A list of (node, label) tuples.
         """
         # Fetch important node types for given language
-        types = self._get_nodes_types(
-            language=language,
-            node_types=node_types
-        )
-        
+        types = self._get_nodes_types(language=language, node_types=node_types)
+
         # Collect node types
         nodes = []
         if node.type in types:
-            if language in ('c', 'cpp') and node.type == 'struct_specifier':
-                has_body = any(child.type == 'field_declaration_list' for child in node.children)
+            if language in ("c", "cpp") and node.type == "struct_specifier":
+                has_body = any(child.type == "field_declaration_list" for child in node.children)
                 if has_body:
                     nodes.append((node, types[node.type]))
             else:
                 nodes.append((node, types[node.type]))
 
         for child in node.children:
-            nodes.extend(
-                self._extract_nodes(
-                    node=child,
-                    language=language,
-                    node_types=node_types
-                )
-            )
+            nodes.extend(self._extract_nodes(node=child, language=language, node_types=node_types))
 
         return nodes
 
-    
-    def get_lines(
-        self, 
-        code: str, 
-        language: str
-    ) -> Tuple[List[int], List[int]]:
+    def get_lines(self, code: str, language: str) -> Tuple[List[int], List[int]]:
         """
         Extracts line numbers of important and comment nodes from source code.
 
@@ -129,35 +112,24 @@ class CodeParser:
                 - Comments and decorators
         """
         # Configure Parser
-        parser = self._get_parser(
-            language=language
-        )
-        
+        parser = self._get_parser(language=language)
+
         # Parse code
-        tree = parser.parse(code.encode('utf-8'))
+        tree = parser.parse(code.encode("utf-8"))
 
         root_node = tree.root_node
-        
-        important_nodes = self._extract_nodes(
-            node=root_node,
-            language=language,
-            node_types=self.IMPORTANT_NODE_TYPES
-        )
-        
-        comment_nodes = self._extract_nodes(
-            node=root_node,
-            language=language,
-            node_types=self.COMMENT_NODES
-        )
-        
+
+        important_nodes = self._extract_nodes(node=root_node, language=language, node_types=self.IMPORTANT_NODE_TYPES)
+
+        comment_nodes = self._extract_nodes(node=root_node, language=language, node_types=self.COMMENT_NODES)
+
         lines = []
-        
+
         for nodes in [important_nodes, comment_nodes]:
-            
             important_lines = {}
 
             for node, interest in nodes:
-                start_line = node.start_point[0] 
+                start_line = node.start_point[0]
                 if interest not in important_lines:
                     important_lines[interest] = []
 
@@ -167,8 +139,7 @@ class CodeParser:
             lines_of_interest = []
             for _, line_numbers in important_lines.items():
                 lines_of_interest.extend(line_numbers)
-        
-            lines.append(sorted(lines_of_interest))
 
+            lines.append(sorted(lines_of_interest))
 
         return lines[0], lines[1]

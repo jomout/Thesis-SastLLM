@@ -1,4 +1,16 @@
 classification:
+  search:
+    save_model_dir: "models/classification/searching_models"
+    save_plots_dir: "plots/classification/searching"
+    params:
+      k: 10661
+      seed: 42
+    grid_search:
+      lr: [0.0001, 0.0005, 0.001]
+      weight_decay: [0.0001, 0.0005, 0.001]
+      l1_param: [0.0001, 0.0005, 0.001]
+      batch_size: [16, 32, 64]
+      epochs: [50]
 
   train:
     save_model_dir: "models/classification/trained_models"

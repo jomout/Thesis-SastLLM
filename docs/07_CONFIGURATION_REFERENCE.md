@@ -138,6 +138,7 @@ classification:
 
 Used by:
 
+- `sastllm classify --mode search`
 - `sastllm classify --mode train`
 - `sastllm classify --mode test`
 

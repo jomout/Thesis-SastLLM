@@ -10,6 +10,8 @@ from sastllm.parsers import TreeSitterGenerator
 logger = get_logger(__name__)
 
 MAX_LINES = 400
+
+
 class FunctionalityPromptGenerator:
     """
     Generates enriched, context-aware code snippets from raw source files
@@ -28,9 +30,9 @@ class FunctionalityPromptGenerator:
         CALL_EXPR_TYPES (set): Types of AST nodes representing function calls.
     """
 
-    CONTROL_NODES = {'if_statement', 'for_statement', 'while_statement', 'switch_statement', 'match_statement'}
-    STRING_NODE_TYPES = {'string', 'string_literal'}
-    CALL_EXPR_TYPES = {'call_expression', 'call'}
+    CONTROL_NODES = {"if_statement", "for_statement", "while_statement", "switch_statement", "match_statement"}
+    STRING_NODE_TYPES = {"string", "string_literal"}
+    CALL_EXPR_TYPES = {"call_expression", "call"}
 
     def __init__(self, tree_sitter_gen: TreeSitterGenerator):
         self._ts_generator = tree_sitter_gen
@@ -45,7 +47,7 @@ class FunctionalityPromptGenerator:
         Returns:
             str: The name of the function, or "unknown" if not found.
         """
-        match = re.search(r'\b([a-zA-Z_]\w*)\s*\([^;{]*\)\s*\{', code)
+        match = re.search(r"\b([a-zA-Z_]\w*)\s*\([^;{]*\)\s*\{", code)
         return match.group(1) if match else "unknown"
 
     def extract_ast_elements(self, tree: Tree, code: str) -> Dict[str, List[str]]:
@@ -68,13 +70,13 @@ class FunctionalityPromptGenerator:
 
         def walk(node: Node):
             if node.type in self.CALL_EXPR_TYPES:
-                callee = node.child_by_field_name('function') or node.child(0)
+                callee = node.child_by_field_name("function") or node.child(0)
                 if callee:
-                    calls.add(code[callee.start_byte:callee.end_byte])
+                    calls.add(code[callee.start_byte : callee.end_byte])
             elif node.type in self.CONTROL_NODES:
                 control.add(node.type)
             elif node.type in self.STRING_NODE_TYPES:
-                strings.add(code[node.start_byte:node.end_byte])
+                strings.add(code[node.start_byte : node.end_byte])
             for child in node.children:
                 walk(child)
 
@@ -100,16 +102,17 @@ class FunctionalityPromptGenerator:
         Returns:
             str: Formatted snippet string for LLM processing.
         """
+
         def format_list(label: str, items: List[str]) -> str:
             if not items:
                 return f"  - {label}: None"
             return f"  - {label}: [{', '.join(items)}]"
-        
+
         def format_header(index: int) -> str:
             return f"Snippet ID: {index}"
-        
+
         # Remove any non-ASCII characters from the code
-        code = re.sub(r'[^\x00-\x7F]+', '', code)
+        code = re.sub(r"[^\x00-\x7F]+", "", code)
 
         # split code into lines for potential truncation
         code_lines = code.splitlines()
@@ -117,8 +120,6 @@ class FunctionalityPromptGenerator:
 
         if total_lines > MAX_LINES:
             code = "\n".join(code_lines[:MAX_LINES]) + f"\n... [truncated, total lines: {total_lines}]"
-
-
 
         formatted = (
             f"{format_header(snippet_id)}\n"
@@ -137,7 +138,6 @@ class FunctionalityPromptGenerator:
 
         return formatted
 
-
     def generate_prompt(self, code_snippets: List[GetExtendedSnippetDto]) -> str:
         """
         Processes a list of GetExtendedSnippetDto objects and returns formatted,
@@ -150,7 +150,7 @@ class FunctionalityPromptGenerator:
             str: A formatted prompt with code snippets with context and AST insights.
         """
         logger.debug(f"Generating prompt for {len(code_snippets)} code snippets.")
-        
+
         snippets = []
 
         for c in code_snippets:
@@ -169,14 +169,14 @@ class FunctionalityPromptGenerator:
                 print(f"Skipping unsupported language: {language} (from language {language})")
                 continue
 
-            tree = parser.parse(code.encode('utf-8'))
+            tree = parser.parse(code.encode("utf-8"))
 
             ast_info = self.extract_ast_elements(tree, code)
             func_name = self.extract_function_name(code)
             snippet = self._format_snippet(snippet_id, file_path, func_name, language, ast_info, code)
 
             snippets.append(snippet)
-            
+
         logger.debug("Generated prompt for %d code snippets.", len(code_snippets))
 
         return "\n\n".join(snippets)

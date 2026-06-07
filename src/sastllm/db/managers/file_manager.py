@@ -16,7 +16,7 @@ class FileManager:
 
     Attributes:
         Session: A SQLAlchemy session factory for creating database sessions.
-    
+
     Methods:
         add_file: Inserts a new file record into the database.
         get_files: Lazily fetches all file records from the database.
@@ -27,7 +27,6 @@ class FileManager:
 
     def __init__(self):
         self.Session = SessionLocal
-
 
     def add_file(self, file: CreateFileDto) -> int:
         """
@@ -43,12 +42,7 @@ class FileManager:
         try:
             # Session + transaction; commits on success, rolls back on exception.
             with self.Session.begin() as session:
-                file_model = FileModel(
-                    repository_id=file.repository_id,
-                    language=file.language,
-                    filename=file.filename,
-                    filepath=file.filepath
-                )
+                file_model = FileModel(repository_id=file.repository_id, language=file.language, filename=file.filename, filepath=file.filepath)
                 session.add(file_model)
                 session.flush()  # populate PK before exiting the context
                 new_id = cast(int, file_model.file_id)
@@ -57,7 +51,6 @@ class FileManager:
             # Rolled back automatically by the context manager.
             logger.error(f"Failed to add file: {e}")
             raise RuntimeError(f"Failed to add file: {e}") from e
-
 
     def get_files(self, batch_size: int = 100) -> Iterator[GetFileDto]:
         """
@@ -74,14 +67,8 @@ class FileManager:
             query = session.query(FileModel).yield_per(batch_size)
             for f in query:
                 yield GetFileDto(
-                    file_id=cast(int, f.file_id),
-                    repository_id=cast(int, f.repository_id),
-                    language=str(f.language),
-                    filename=str(f.filename),
-                    filepath=str(f.filepath),
-                    processed=bool(f.processed)
+                    file_id=cast(int, f.file_id), repository_id=cast(int, f.repository_id), language=str(f.language), filename=str(f.filename), filepath=str(f.filepath), processed=bool(f.processed)
                 )
-
 
     def get_file(self, file_id: int) -> Optional[GetFileDto]:
         """
@@ -99,14 +86,8 @@ class FileManager:
             if f is None:
                 return None
             return GetFileDto(
-                file_id=cast(int, f.file_id),
-                repository_id=cast(int, f.repository_id),
-                language=str(f.language),
-                filename=str(f.filename),
-                filepath=str(f.filepath),
-                processed=bool(f.processed)
+                file_id=cast(int, f.file_id), repository_id=cast(int, f.repository_id), language=str(f.language), filename=str(f.filename), filepath=str(f.filepath), processed=bool(f.processed)
             )
-        
 
     def delete_file(self, file_id: int) -> None:
         """
@@ -122,7 +103,6 @@ class FileManager:
         except Exception as e:
             logger.error(f"Failed to delete file {file_id}: {e}")
             raise RuntimeError(f"Failed to delete file {file_id}: {e}") from e
-            
 
     def update_file(self, file: UpdateFileDto) -> None:
         """
@@ -147,9 +127,7 @@ class FileManager:
 
         try:
             with self.Session.begin() as session:
-                session.query(FileModel).filter_by(file_id=file.file_id).update(
-                    fields, synchronize_session=False
-                )
+                session.query(FileModel).filter_by(file_id=file.file_id).update(fields, synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to update file {file.file_id}: {e}")
             raise RuntimeError(f"Failed to update file {file.file_id}: {e}") from e

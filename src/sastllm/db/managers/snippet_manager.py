@@ -18,7 +18,7 @@ class SnippetManager:
 
     Attributes:
         Session: A SQLAlchemy session factory for creating database sessions.
-        
+
     Methods:
         add_snippet: Inserts a new snippet record into the database.
         add_bulk_snippets: Inserts multiple snippet records in a single transaction.
@@ -30,7 +30,6 @@ class SnippetManager:
 
     def __init__(self):
         self.Session = SessionLocal
-
 
     def add_snippet(self, snippet: CreateSnippetDto) -> int:
         """
@@ -60,7 +59,6 @@ class SnippetManager:
             # The context manager already rolled back on exception.
             logger.error(f"Failed to add snippet: {e}")
             raise RuntimeError(f"Failed to add snippet: {e}") from e
-
 
     def add_bulk_snippets(self, snippets: List[CreateSnippetDto]) -> List[int]:
         """
@@ -98,7 +96,6 @@ class SnippetManager:
             logger.error(f"Failed to add bulk snippets: {e}")
             raise RuntimeError(f"Failed to add bulk snippets: {e}") from e
 
-
     def get_snippets(self, batch_size: int = 100) -> Iterator[GetSnippetDto]:
         """
         Lazily fetches all code snippet records from the database and yields them as dataclass instances.
@@ -119,9 +116,8 @@ class SnippetManager:
                     code=str(s.code),
                     start_line=cast(int, s.start_line),
                     end_line=cast(int, s.end_line),
-                    processed=cast(bool, s.processed)
+                    processed=cast(bool, s.processed),
                 )
-
 
     def get_snippet(self, snippet_id: int) -> Optional[GetSnippetDto]:
         """
@@ -129,7 +125,7 @@ class SnippetManager:
 
         Args:
             snippet_id (int): The ID of a snippet record.
-            
+
         Returns:
             Optional[GetSnippetDto]: A GetSnippetDto object with the corresponding ID.
         """
@@ -144,9 +140,8 @@ class SnippetManager:
                 code=str(s.code),
                 start_line=cast(int, s.start_line),
                 end_line=cast(int, s.end_line),
-                processed=cast(bool, s.processed)
+                processed=cast(bool, s.processed),
             )
-
 
     def delete_snippet(self, snippet_id: int) -> None:
         """
@@ -155,14 +150,13 @@ class SnippetManager:
         Args:
             snippet_id (int): The ID of a snippet record.
         """
-        logger.debug(f"Deleting snippet with ID: {snippet_id}")        
+        logger.debug(f"Deleting snippet with ID: {snippet_id}")
         try:
             with self.Session.begin() as session:
                 session.query(SnippetModel).filter_by(snippet_id=snippet_id).delete()
         except Exception as e:
             logger.error(f"Failed to delete snippet {snippet_id}: {e}")
             raise RuntimeError(f"Failed to delete snippet {snippet_id}: {e}") from e
-
 
     def update_snippet(self, snippet: UpdateSnippetDto) -> None:
         """
@@ -194,13 +188,10 @@ class SnippetManager:
 
         try:
             with self.Session.begin() as session:
-                session.query(SnippetModel).filter_by(snippet_id=snippet.snippet_id).update(
-                    fields, synchronize_session=False
-                )
+                session.query(SnippetModel).filter_by(snippet_id=snippet.snippet_id).update(fields, synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to update snippet {snippet.snippet_id}: {e}")
             raise RuntimeError(f"Failed to update snippet {snippet.snippet_id}: {e}") from e
-
 
     def update_bulk_snippets(self, snippets: List[UpdateSnippetDto]) -> None:
         """
@@ -233,24 +224,20 @@ class SnippetManager:
                     if not fields:
                         continue  # Nothing to update for this snippet
 
-                    session.query(SnippetModel).filter_by(snippet_id=snippet.snippet_id).update(
-                        fields, synchronize_session=False
-                    )
+                    session.query(SnippetModel).filter_by(snippet_id=snippet.snippet_id).update(fields, synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to update bulk snippets: {e}")
             raise RuntimeError(f"Failed to update bulk snippets: {e}") from e
-        
 
     def get_num_snippets(self) -> int:
         """
         Fetches the total number of unprocessed code snippets in the database.
-        
+
         Returns:
             int: The total number of unprocessed code snippets.
         """
         with self.Session() as session:
             return session.query(func.count(SnippetModel.snippet_id)).filter(SnippetModel.processed.is_(False)).scalar()
-        
 
     def get_snippets_with_file_meta(self, batch_size: int = 100) -> Iterator[GetExtendedSnippetDto]:
         """
@@ -260,7 +247,7 @@ class SnippetManager:
             batch_size (int): Number of rows fetched per batch from the database.
 
         Yields:
-            GetExtendedSnippetDto: An object containing snippet ID, code, filename, 
+            GetExtendedSnippetDto: An object containing snippet ID, code, filename,
                                  repository, filepath, and programming language.
         """
         logger.debug("Fetching code snippets with file metadata from database.")
@@ -295,5 +282,5 @@ class SnippetManager:
                     language=row.language,
                     start_line=row.start_line,
                     end_line=row.end_line,
-                    processed=row.processed
+                    processed=row.processed,
                 )

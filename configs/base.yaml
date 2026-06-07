@@ -4,7 +4,7 @@ app:
 log:
   level: INFO
   file: logs/sastllm.log
-  file_level: INFO
+  file_level: DEBUG
   max_bytes: 10485760
   backup_count: 5
 

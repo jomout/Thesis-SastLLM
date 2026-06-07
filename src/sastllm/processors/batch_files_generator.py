@@ -71,9 +71,7 @@ class BatchFilesGenerator:
         logger.debug(f"Creating snippet batch for {len(code_snippets)} code snippets.")
 
         # Generate Prompt
-        snippets_prompt = Template(FUNCTIONALITY_PROMPT).substitute(
-            code_snippets=self.gen.generate_prompt(code_snippets)
-        )
+        snippets_prompt = Template(FUNCTIONALITY_PROMPT).substitute(code_snippets=self.gen.generate_prompt(code_snippets))
 
         logger.debug(f"Generated snippet batch for {len(code_snippets)} code snippets.")
 
@@ -91,10 +89,7 @@ class BatchFilesGenerator:
         total_api_batches = math.ceil(total_batches / self.api_batch_size)
 
         print(f"Total snippet batches: {total_batches}")
-        print(
-            f"Creating {total_api_batches} API batch files "
-            f"({self.api_batch_size} prompts per .jsonl file)."
-        )
+        print(f"Creating {total_api_batches} API batch files ({self.api_batch_size} prompts per .jsonl file).")
         current_api_batch_index = 1
         current_snippet_prompts = []
         prompt_count = 0
@@ -108,12 +103,8 @@ class BatchFilesGenerator:
             # Once we reach api_batch_size, write a new jsonl file
             if prompt_count >= self.api_batch_size:
                 file_name = os.path.join(output_dir, f"api_batch_{current_api_batch_index}.jsonl")
-                self.build_api_batch_jsonl(
-                    current_snippet_prompts, output_path=file_name, model=self.model
-                )
-                with open(
-                    f"snippet_prompts_debug_{current_api_batch_index}.txt", "a", encoding="utf-8"
-                ) as debug_f:
+                self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
+                with open(f"snippet_prompts_debug_{current_api_batch_index}.txt", "a", encoding="utf-8") as debug_f:
                     for sp in current_snippet_prompts:
                         debug_f.write(sp + "\n\n---\n\n")
                 print(f"Wrote {file_name} with {prompt_count} prompts.")
@@ -126,9 +117,7 @@ class BatchFilesGenerator:
         # Handle remaining snippets (if not a multiple of api_batch_size)
         if current_snippet_prompts:
             file_name = output_directory / f"api_batch_{current_api_batch_index}.jsonl"
-            self.build_api_batch_jsonl(
-                current_snippet_prompts, output_path=file_name, model=self.model
-            )
+            self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
             print(f"Wrote final {file_name} with {prompt_count} prompts.")
 
     def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[GetExtendedSnippetDto]], int]:

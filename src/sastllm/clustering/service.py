@@ -106,10 +106,7 @@ class FunctionalityClusteringService:
     def _store_assignments(self, assignment_batches: Iterable[ClusterAssignmentBatch]) -> None:
         total = 0
         for batch in assignment_batches:
-            updates = [
-                UpdateFunctionalityDto(functionality_id=int(functionality_id), cluster_id=int(cluster_id))
-                for functionality_id, cluster_id in zip(batch.functionality_ids, batch.cluster_ids)
-            ]
+            updates = [UpdateFunctionalityDto(functionality_id=int(functionality_id), cluster_id=int(cluster_id)) for functionality_id, cluster_id in zip(batch.functionality_ids, batch.cluster_ids)]
             self.functionality_manager.update_bulk_functionalities(updates)
             total += len(updates)
             logger.debug("Stored cluster assignment batch", batch_size=len(updates), total=total)

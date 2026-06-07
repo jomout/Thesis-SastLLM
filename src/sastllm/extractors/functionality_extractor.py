@@ -63,7 +63,7 @@ class FunctionalityExtractor:
         Returns:
             List[str]: A list of sentences describing separate behaviors.
         """
-        raw_sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        raw_sentences = re.split(r"(?<=[.!?])\s+", text.strip())
         return [s for s in raw_sentences if s]
 
     def extract_all(self, llm_text: str) -> Dict[str, Dict[str, List[str]]]:
@@ -97,8 +97,6 @@ class FunctionalityExtractor:
             paragraph = self._extract_functionality(section)
             functionalities = self._split_into_sentences(paragraph)
 
-            results[chunk_id] = {
-                "functionalities": functionalities
-            }
+            results[chunk_id] = {"functionalities": functionalities}
 
         return results

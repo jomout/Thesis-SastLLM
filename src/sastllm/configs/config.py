@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     Application configuration settings.
     Loaded from environment variables or a .env file.
     """
+
     # API settings
     google_api_key: str = ""
     openai_api_key: str = ""
@@ -23,5 +24,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
 
 settings = Settings()

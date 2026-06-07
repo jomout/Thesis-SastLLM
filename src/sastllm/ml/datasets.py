@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 import torch
@@ -87,7 +87,7 @@ class RepositoryDataModule(LightningDataModule):
     def predict_dataloader(self) -> DataLoader:
         return self._loader(self.test_ds)
 
-    def dataloader_for_split(self, split: str) -> DataLoader:
+    def dataloader_for_split(self, split: Literal["train", "val", "test"]) -> DataLoader:
         self.setup()
         if split == "train":
             return self._loader(self.train_ds)
