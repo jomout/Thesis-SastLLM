@@ -117,10 +117,7 @@ class MiniBatchKMeansClusterer:
         logger.info("Cluster prediction completed", samples=total)
 
     def predict(self, source: EmbeddingSource, *, batch_size: int = 1000) -> np.ndarray:
-        batches = [
-            np.column_stack((batch.functionality_ids, batch.cluster_ids))
-            for batch in self.predict_batches(source, batch_size=batch_size)
-        ]
+        batches = [np.column_stack((batch.functionality_ids, batch.cluster_ids)) for batch in self.predict_batches(source, batch_size=batch_size)]
         if not batches:
             return np.empty((0, 2), dtype=np.int64)
         return np.concatenate(batches, axis=0)

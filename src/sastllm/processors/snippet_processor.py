@@ -17,9 +17,12 @@ from sastllm.utils import Normalizer
 
 logger = get_logger(__name__)
 
+
 class LLMError(Exception):
     """Custom exception for LLM-related errors."""
+
     pass
+
 
 def retry(max_retries=10, delay=1, backoff=1.5, max_delay=60, jitter=0.1, exceptions=(Exception,), logger=None):
     """
@@ -34,6 +37,7 @@ def retry(max_retries=10, delay=1, backoff=1.5, max_delay=60, jitter=0.1, except
         exceptions (tuple): Exceptions to catch and retry.
         logger (logging.Logger): Optional logger for messages.
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             current_delay = delay
@@ -54,9 +58,10 @@ def retry(max_retries=10, delay=1, backoff=1.5, max_delay=60, jitter=0.1, except
 
                     # Gradually increase delay, capped
                     current_delay = min(current_delay * backoff, max_delay)
-        return wrapper
-    return decorator
 
+        return wrapper
+
+    return decorator
 
 
 class SnippetProcessor:
@@ -68,13 +73,7 @@ class SnippetProcessor:
     the extracted descriptions, and persisting the results in a database.
     """
 
-    def __init__(
-        self,
-        *,
-        llm,
-        batch_size: int = 50,
-        sleep_interval: int = 10
-    ) -> None:
+    def __init__(self, *, llm, batch_size: int = 50, sleep_interval: int = 10) -> None:
         """
         Initialize the SnippetProcessor with its dependencies and configuration.
 
@@ -87,7 +86,7 @@ class SnippetProcessor:
         logger.debug("Initializing SnippetProcessor.")
 
         self.llm = llm
-        
+
         self.batch_size = batch_size
         self.sleep_interval = sleep_interval
 
@@ -95,14 +94,13 @@ class SnippetProcessor:
 
         self.gen = FunctionalityPromptGenerator(tree_sitter_gen=self.tree_sitter_gen)
         self.analyzer = FunctionalityAnalyzer(llm=llm)
-        
+
         self.functionality_db = FunctionalityManager()
         self.snippet_db = SnippetManager()
-        
-        self.normalizer = Normalizer()
-        
-        logger.debug("SnippetProcessor initialized.")
 
+        self.normalizer = Normalizer()
+
+        logger.debug("SnippetProcessor initialized.")
 
     def run_batch(self, code_snippets: List[GetExtendedSnippetDto]) -> None:
         """
@@ -119,7 +117,7 @@ class SnippetProcessor:
             code_snippets (List[GetExtendedSnippetDto]): List of code snippet objects to analyze.
         """
         logger.debug(f"Generating functionalities for {len(code_snippets)} code snippets.")
-        
+
         try:
             # Generate Prompt
             snippets_prompt = self.gen.generate_prompt(code_snippets)
@@ -135,10 +133,10 @@ class SnippetProcessor:
 
             # Extract Data
             extracted_response = self._parse_functionality_output(response)
-            
+
             # Store Functionalities
             self._store_functionalities(extracted_response)
-            
+
         except LLMError as llm_err:
             logger.warning(f"Skipping batch due to LLM error: {llm_err}")
             raise llm_err
@@ -148,7 +146,6 @@ class SnippetProcessor:
 
         logger.debug("Generated functionalities for %d snippets.", len(code_snippets))
 
-    
     def run(self) -> None:
         """
         Runs the snippet processing pipeline on all available code snippets in batches.
@@ -174,10 +171,10 @@ class SnippetProcessor:
                 if not batch:
                     logger.debug(f"No snippets to process in batch {i}/{total_batches} [{start}, {end - 1}]. Skipping.")
                     continue
-                
+
                 # Process Batch
                 self.run_batch(batch)
-                
+
                 logger.debug(f"Sleeping for {self.sleep_interval} seconds.")
                 sleep(self.sleep_interval)
             except KeyboardInterrupt:
@@ -189,16 +186,15 @@ class SnippetProcessor:
             except Exception as e:
                 logger.warning(f"Failed to process batch {i}/{total_batches}, [{start}, {end - 1}]: {e}")
                 break
-        
-        logger.info("Snippet processing completed successfully.")
 
+        logger.info("Snippet processing completed successfully.")
 
     @staticmethod
     def _parse_functionality_output(output: str) -> Dict[str, List[str]]:
         """
         Parse LLM output in the format:
         <chunk_number>: <functionality 1>; <functionality 2>; <functionality 3>
-        
+
         Returns:
             Dict[int, List[str]]  -> mapping of chunk_number to list of functionalities
         """
@@ -219,7 +215,6 @@ class SnippetProcessor:
                 continue
         return result
 
-
     @staticmethod
     def _cache(dir: str, snippet_id: int, payload: List[CreateFunctionalityDto]) -> None:
         """
@@ -235,7 +230,6 @@ class SnippetProcessor:
         except Exception as file_err:
             logger.warning(f"Failed to write file for {snippet_id}: {file_err}")
 
-    
     def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[GetExtendedSnippetDto]], int]:
         """
         Fetches code snippets from the database and organizes them into batches.
@@ -249,7 +243,6 @@ class SnippetProcessor:
         total_batches = (total_snippets + self.batch_size - 1) // self.batch_size
 
         return self._batch_objects(snippets, self.batch_size), total_batches
-        
 
     @staticmethod
     def _batch_objects(iterable: Iterator[Any], batch_size: int):
@@ -270,16 +263,15 @@ class SnippetProcessor:
                 break
             yield batch
 
-
     def _store_functionalities(self, extracted_data: Dict[str, List[str]]) -> None:
         """
         Normalizes and stores extracted functionalities in the database.
-        
+
         Args:
             extracted_data (Dict[str, List[str]]): Parsed functionalities grouped by chunk.
         """
         logger.debug("Storing extracted functionalities in the database.")
-        
+
         for key, descriptions in extracted_data.items():
             try:
                 # Extract the numeric snippet ID from the key
@@ -298,7 +290,7 @@ class SnippetProcessor:
                     )
                     for desc in unique_descriptions
                 ]
-                
+
                 # Mark snippet as processed
                 snippet = UpdateSnippetDto(snippet_id=snippet_id, processed=True)
                 self.snippet_db.update_snippet(snippet=snippet)
@@ -329,9 +321,8 @@ class SnippetProcessor:
             except Exception as e:
                 logger.warning(f"Skipping malformed output for {key}: {e}")
                 return
-        
-        logger.debug("Successfully stored extracted functionalities.")
 
+        logger.debug("Successfully stored extracted functionalities.")
 
     @retry(max_retries=1000, delay=1, logger=logger)
     def _analyze_snippet(self, snippet_prompt: str) -> str:

@@ -10,6 +10,7 @@ from sastllm.utils import Normalizer
 
 logger = get_logger(__name__)
 
+
 class JsonlFolder:
     """
     Utility class to manage and iterate over all .jsonl files in a folder.
@@ -57,12 +58,12 @@ class JsonlFolder:
     def _store_functionalities(self, extracted_data: Dict[str, List[str]]) -> None:
         """
         Normalizes and stores extracted functionalities in the database.
-        
+
         Args:
             extracted_data (Dict[str, List[str]]): Parsed functionalities grouped by chunk.
         """
         logger.debug("Storing extracted functionalities in the database.")
-        
+
         for key, descriptions in extracted_data.items():
             try:
                 # Extract the numeric snippet ID from the key
@@ -81,7 +82,7 @@ class JsonlFolder:
                     )
                     for desc in unique_descriptions
                 ]
-                
+
                 # Mark snippet as processed
                 _snippet = self.snippet_db.get_snippet(snippet_id=snippet_id)
                 if _snippet and _snippet.processed:
@@ -116,7 +117,7 @@ class JsonlFolder:
             except Exception as e:
                 logger.warning(f"Skipping malformed output for {key}: {e}")
                 return
-        
+
         logger.debug("Successfully stored extracted functionalities.")
 
     @staticmethod
@@ -133,8 +134,6 @@ class JsonlFolder:
             logger.debug(f"Wrote functionalities for {snippet_id} to {file_path}")
         except Exception as file_err:
             logger.warning(f"Failed to write file for {snippet_id}: {file_err}")
-        
-
 
     def read_folder(self) -> None:
         for jsonl_path in self._jsonl_files:
@@ -149,7 +148,7 @@ class JsonlFolder:
                     continue
 
                 result = self._parse_functionality_output(text)
-                
+
                 self._store_functionalities(extracted_data=result)
 
     @staticmethod
@@ -157,7 +156,7 @@ class JsonlFolder:
         """
         Parse LLM output in the format:
         <chunk_number>: <functionality 1>; <functionality 2>; <functionality 3>
-        
+
         Returns:
             Dict[int, List[str]]  -> mapping of chunk_number to list of functionalities
         """
@@ -177,7 +176,6 @@ class JsonlFolder:
                 # Skip malformed lines gracefully
                 continue
         return result
-                
 
 
 if __name__ == "__main__":

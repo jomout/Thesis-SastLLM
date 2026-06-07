@@ -43,10 +43,10 @@ class RepositoryEncoding:
 
 
 class RepositoryEncoderProtocol(Protocol):
-    feature_dim: int
+    @property
+    def feature_dim(self) -> int: ...
 
-    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding:
-        ...
+    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding: ...
 
 
 class ClusterDistributionEncoder:
@@ -142,4 +142,3 @@ class ClusterDistributionEncoder:
             if value > 0:
                 out[key] = value
         return out
-

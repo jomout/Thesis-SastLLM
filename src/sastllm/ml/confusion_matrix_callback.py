@@ -1,4 +1,3 @@
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
@@ -41,9 +40,7 @@ class ConfusionMatrixCallback(Callback):
         cm = self._make_confusion_matrix(preds, targets)
         fig = self._plot_confusion_matrix(cm, title="Validation Confusion Matrix")
 
-        trainer.logger.experiment.add_figure(
-            "val/confusion_matrix", fig, trainer.current_epoch
-        )
+        trainer.logger.experiment.add_figure("val/confusion_matrix", fig, trainer.current_epoch)
         plt.close(fig)
 
     # -------------------------
@@ -69,9 +66,7 @@ class ConfusionMatrixCallback(Callback):
         cm = self._make_confusion_matrix(preds, targets)
         fig = self._plot_confusion_matrix(cm, title="Test Confusion Matrix")
 
-        trainer.logger.experiment.add_figure(
-            "test/confusion_matrix", fig, trainer.current_epoch
-        )
+        trainer.logger.experiment.add_figure("test/confusion_matrix", fig, trainer.current_epoch)
         plt.close(fig)
 
     # -------------------------

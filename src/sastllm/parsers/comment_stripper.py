@@ -58,7 +58,7 @@ class CommentStripper:
         tree = parser.parse(code.encode("utf-8"))
         if not tree:
             raise ValueError("AST Tree cannot be generated.")
-        
+
         root = tree.root_node
 
         # Compute deletion ranges (byte offsets) for comment nodes
@@ -102,9 +102,7 @@ class CommentStripper:
         try:
             parser = self._ts_generator.get_parser(language=lang_key)
         except Exception as e:
-            raise ValueError(
-                f"Unsupported or unknown language '{language}'. Ensure it exists in configs/languages.yaml. Original error: {e}"
-            )
+            raise ValueError(f"Unsupported or unknown language '{language}'. Ensure it exists in configs/languages.yaml. Original error: {e}")
         self._parser_cache[lang_key] = parser
         return parser
 
@@ -130,7 +128,6 @@ class CommentStripper:
 
             for i in range(cur.child_count - 1, -1, -1):
                 stack.append(cur.children[i])
-
 
     @staticmethod
     def _merge_spans(spans: List[Tuple[int, int]]) -> List[Tuple[int, int]]:

@@ -34,7 +34,6 @@ __all__ = [
     "CreateSnippetDto",
     "CreateFunctionalityDto",
     "CreateClusterDto",
-
     "GetRepositoryDto",
     "GetFileDto",
     "GetSnippetDto",
@@ -42,7 +41,6 @@ __all__ = [
     "GetClusterDto",
     "GetExtendedSnippetDto",
     "GetClassificationRepositoryDto",
-
     "UpdateRepositoryDto",
     "UpdateFileDto",
     "UpdateSnippetDto",

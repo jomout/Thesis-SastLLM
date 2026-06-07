@@ -182,9 +182,7 @@ class RepositoryManager:
             logger.error(f"Failed to update repository {repository.repository_id}: {e}")
             raise RuntimeError(f"Failed to update repository {repository.repository_id}: {e}") from e
 
-    def get_repositories_with_cluster_ids(
-        self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100
-    ) -> Iterator[GetClassificationRepositoryDto]:
+    def get_repositories_with_cluster_ids(self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100) -> Iterator[GetClassificationRepositoryDto]:
         with self.Session() as session:
             # LEFT JOIN through the graph so empty repos are kept
             query = (

@@ -47,9 +47,7 @@ class BatchFileProcessor:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.debug(
-            f"BatchFileProcessor initialized: batch_dir={self.batch_files_dir}, output_dir={self.output_dir}, poll_interval={self.poll_interval}s"
-        )
+        logger.debug(f"BatchFileProcessor initialized: batch_dir={self.batch_files_dir}, output_dir={self.output_dir}, poll_interval={self.poll_interval}s")
 
     def _upload_file(self, path: Path):
         """Upload a JSONL file for batch processing."""
