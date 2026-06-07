@@ -138,7 +138,7 @@ def generate_functionalities() -> None:
         raise RuntimeError(f"Functionality generation failed: {e}") from e
 
 
-def classify_repositories(mode: Literal["train", "test"]) -> None:
+def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
     """
     Classify repositories by their clusters using ML.
     """
@@ -153,10 +153,13 @@ def classify_repositories(mode: Literal["train", "test"]) -> None:
         batch_size=config.training.batch_size,
         epochs=config.training.epochs,
     )
-    service = RepositoryClassificationService(config=config)
+    service = RepositoryClassificationService(config=config, build_bundle=mode != "search")
 
     try:
-        if mode == "train":
+        if mode == "search":
+            with log_duration(logger, "repository_classification_search"):
+                service.search()
+        elif mode == "train":
             with log_duration(logger, "repository_classification_train"):
                 model_dir = service.fit()
             print(f"Model saved to: {model_dir}")

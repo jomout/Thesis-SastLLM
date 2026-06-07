@@ -26,6 +26,7 @@ class ClusteringMode(str, Enum):
 
 
 class ClassificationMode(str, Enum):
+    search = "search"
     train = "train"
     test = "test"
 

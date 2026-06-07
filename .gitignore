@@ -24,3 +24,6 @@ backup*.sql
 test*.py
 
 qdrant*/
+
+models/classification/searching_models/*
+models/classification/trained_models/*

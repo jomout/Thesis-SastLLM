@@ -5,6 +5,7 @@ This stage converts clustered functionality ids into repository-level vectors an
 ## CLI entrypoints
 
 ```bash
+sastllm classify --mode search
 sastllm classify --mode train
 sastllm classify --mode test
 sastllm train
@@ -116,6 +117,17 @@ binary_labels:
 ```
 
 ## Training flow
+
+## Search flow
+
+`classify --mode search` reads `classification.search.grid_search` from `configs/classification.yaml`, builds every parameter combination, trains one model per combination, and writes:
+
+- search model directories under `classification.search.save_model_dir`
+- per-run accuracy plots under `classification.search.save_plots_dir`
+- `search_summary.json` under `classification.search.save_plots_dir`
+- `train_predictions.json`, `train_metrics.json`, `val_predictions.json`, and `val_metrics.json` inside each search model directory
+
+Each plot contains training and validation accuracy over epochs.
 
 `classify --mode train`:
 

@@ -96,6 +96,7 @@ Reference: [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)
 ### Classification
 
 ```bash
+sastllm classify --mode search
 sastllm classify --mode train
 sastllm classify --mode test
 ```
@@ -104,6 +105,7 @@ Modes:
 
 | Mode | Behavior |
 | --- | --- |
+| `search` | grid-search classifier params, save models, plot train/validation accuracy |
 | `train` | train classifier, save checkpoint, write train metrics |
 | `test` | load checkpoint, run test, write predictions and metrics |
 

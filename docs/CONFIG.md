@@ -60,6 +60,9 @@ Classification:
 
 ```yaml
 classification:
+  search:
+    save_model_dir: "models/classification/searching_models"
+    save_plots_dir: "plots/classification/searching"
   train:
     save_model_dir: "models/classification/trained_models"
   test:
