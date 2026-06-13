@@ -60,6 +60,15 @@ class GetClusterDto(BaseModel):
     label: Optional[str]
 
 
+class GetFunctionalityClusterDto(BaseModel):
+    """
+    Minimal ordered functionality representation for sequence encoders.
+    """
+
+    functionality_id: int
+    cluster_id: Optional[int]
+
+
 class GetExtendedSnippetDto(GetSnippetDto):
     """
     Extended DTO for fetching snippets including additional file and repository information.
@@ -85,3 +94,4 @@ class GetClassificationRepositoryDto(BaseModel):
     repository_id: int
     data: Optional[dict[int, int]]  # Mapping of cluster_id to count
     label: Optional[str]
+    ordered_functionalities: Optional[list[GetFunctionalityClusterDto]] = None

@@ -8,6 +8,8 @@ This stage converts clustered functionality ids into repository-level vectors an
 sastllm classify --mode search
 sastllm classify --mode train
 sastllm classify --mode test
+sastllm-inspect-distribution --repository-id <id>
+sastllm-inspect-timeseries --repository-id <id>
 sastllm train
 sastllm test
 ```
@@ -20,6 +22,7 @@ Implementation paths:
 - Repository encoders: `src/sastllm/classification/encoders.py`
 - Dataset assembly: `src/sastllm/classification/data.py`
 - Metrics: `src/sastllm/classification/metrics.py`
+- Inspection scripts: `src/scripts/inspect_repository_distribution_encoding.py`, `src/scripts/inspect_repository_timeseries_encoding.py`
 - ML datasets/training/models: `src/sastllm/ml/datasets.py`, `src/sastllm/ml/training.py`, `src/sastllm/ml/models/`
 
 ## High-level wrappers
@@ -85,6 +88,7 @@ The resulting DTO shape is:
 repository_id
 label
 data = {cluster_id: count}
+ordered_functionalities = [{functionality_id, cluster_id}, ...]
 ```
 
 Before encoding, every label that is not exactly `benign` is rewritten to `malicious`.
@@ -108,6 +112,39 @@ x[19] = 0.25
 
 `encode_repos()` then normalizes the entire feature matrix by its global L2 norm.
 
+Cluster ids are zero-based. A database `cluster_id` of `0` maps directly to feature column `0`.
+
+`OrderedFunctionalityTimeSeriesEncoder` creates a sequence-like feature matrix:
+
+```text
+shape = [num_functionalities, k]
+```
+
+The encoder:
+
+1. sorts functionalities by `functionality_id` in ascending order
+2. reads each functionality `cluster_id`
+3. creates one one-hot row per functionality
+
+For example, ordered cluster ids:
+
+```text
+5 -> 0 -> 5 -> 4
+```
+
+with `k = 6` become:
+
+```text
+[
+  [0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 1],
+  [0, 0, 0, 0, 1, 0],
+]
+```
+
+This representation preserves functionality order and is suitable for sequence or time-series model experiments.
+
 Binary labels come from `configs/split.yaml`:
 
 ```yaml
@@ -115,6 +152,52 @@ binary_labels:
   - 0: "benign"
   - 1: "malicious"
 ```
+
+## Encoder inspection scripts
+
+Two scripts inspect a single repository from PostgreSQL, print its files/snippets/functionalities, and show exactly how the repository is encoded.
+
+Distribution encoder:
+
+```bash
+sastllm-inspect-distribution --repository-id 123
+sastllm-inspect-distribution --repository-name owner/repo
+```
+
+This prints:
+
+- repository metadata
+- files and snippets
+- functionality ids, tags, descriptions, and cluster ids
+- raw cluster counts
+- non-zero `ClusterDistributionEncoder` feature values
+
+Time-series encoder:
+
+```bash
+sastllm-inspect-timeseries --repository-id 123
+sastllm-inspect-timeseries --repository-name owner/repo
+```
+
+This prints:
+
+- the same repository/file/functionality tree
+- the encoded feature shape
+- the preserved timestep order
+- each timestep's `functionality_id`, source lines, `cluster_id`, and active one-hot column
+
+Useful flags:
+
+```bash
+--num-clusters 10661
+--show-full-vector
+--max-description-chars 240
+--max-sequence-length 512
+--truncation first
+--truncation last
+```
+
+`--max-sequence-length` applies only to the time-series script. If a repository has more clustered functionalities than this limit, `--truncation first` keeps the earliest functionality ids and `--truncation last` keeps the latest functionality ids. If the sequence is shorter than the limit, the remaining rows are zero-padding.
 
 ## Training flow
 

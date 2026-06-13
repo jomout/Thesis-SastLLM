@@ -111,6 +111,29 @@ Modes:
 
 Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)
 
+### Repository encoding inspection
+
+```bash
+sastllm-inspect-distribution --repository-id 123
+sastllm-inspect-timeseries --repository-id 123
+```
+
+These scripts load one repository from PostgreSQL, print its files/snippets/functionalities, and show how the repository is encoded.
+
+Use `--repository-name <name>` instead of `--repository-id` when the repository name is easier to target.
+
+Common flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--num-clusters 10661` | override `classification.<mode>.params.k` |
+| `--show-full-vector` | print complete feature vectors instead of only non-zero entries |
+| `--max-description-chars 240` | control functionality description truncation in printed output |
+| `--max-sequence-length 512` | pad/truncate the time-series encoder output to a fixed length |
+| `--truncation first\|last` | for long sequences, keep earliest or latest functionality ids |
+
+Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md#encoder-inspection-scripts)
+
 ### Pipeline wrappers
 
 ```bash

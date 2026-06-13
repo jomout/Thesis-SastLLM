@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Iterator, List, Literal, Optional, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, cast
 
 from sqlalchemy import func
 
@@ -14,6 +14,7 @@ from sastllm.db.models import (
 from sastllm.dtos import (
     CreateRepositoryDto,
     GetClassificationRepositoryDto,
+    GetFunctionalityClusterDto,
     GetRepositoryDto,
     UpdateRepositoryDto,
 )
@@ -162,7 +163,7 @@ class RepositoryManager:
             containing fields to update.
         """
         logger.debug(f"Updating repository with ID: {repository.repository_id}")
-        fields = {}
+        fields: dict[Any, Any] = {}
         if repository.name is not None:
             fields[RepositoryModel.name] = repository.name
         if repository.label is not None:
@@ -188,6 +189,7 @@ class RepositoryManager:
             query = (
                 session.query(
                     RepositoryModel.repository_id,
+                    FunctionalityModel.functionality_id,
                     FunctionalityModel.cluster_id,
                     RepositoryModel.label,
                 )
@@ -208,7 +210,7 @@ class RepositoryManager:
                     isouter=True,
                 )
                 .filter(RepositoryModel.processed.is_(True))
-                .order_by(RepositoryModel.repository_id)  # cluster_id order not needed for counting
+                .order_by(RepositoryModel.repository_id, FunctionalityModel.functionality_id)
                 .execution_options(stream_results=True)
                 .yield_per(batch_size)
             )
@@ -218,16 +220,19 @@ class RepositoryManager:
             current_repo_id: Optional[int] = None
             current_label: Optional[str] = None
             current_counts: Dict[int, int] = defaultdict(int)
+            current_ordered_functionalities: list[GetFunctionalityClusterDto] = []
 
-            for repo_id, cluster_id, label in query:
+            for repo_id, functionality_id, cluster_id, label in query:
                 # boundary: new repository encountered
                 if current_repo_id is not None and repo_id != current_repo_id:
                     yield GetClassificationRepositoryDto(
                         repository_id=current_repo_id,
                         data=dict(current_counts) if current_counts else None,
                         label=current_label,
+                        ordered_functionalities=current_ordered_functionalities or None,
                     )
                     current_counts.clear()
+                    current_ordered_functionalities = []
                     current_label = None
 
                 current_repo_id = repo_id
@@ -235,6 +240,13 @@ class RepositoryManager:
 
                 if cluster_id is not None:
                     current_counts[cluster_id] += 1
+                if functionality_id is not None:
+                    current_ordered_functionalities.append(
+                        GetFunctionalityClusterDto(
+                            functionality_id=int(functionality_id),
+                            cluster_id=int(cluster_id) if cluster_id is not None else None,
+                        )
+                    )
 
             # emit the final group
             if current_repo_id is not None:
@@ -242,6 +254,7 @@ class RepositoryManager:
                     repository_id=current_repo_id,
                     data=dict(current_counts) if current_counts else None,
                     label=current_label,
+                    ordered_functionalities=current_ordered_functionalities or None,
                 )
 
     def bulk_update_split(self, repo_ids: List[int], split: str) -> None:

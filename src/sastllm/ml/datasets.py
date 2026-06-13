@@ -17,8 +17,8 @@ class RepositoryTensorDataset(Dataset):
     """Tensor dataset for repository-level classification."""
 
     def __init__(self, *, ids: torch.Tensor, X: torch.Tensor, y: torch.Tensor) -> None:
-        if X.ndim != 2:
-            raise ValueError("X must have shape (N, D).")
+        if X.ndim not in (2, 3):
+            raise ValueError("X must have shape (N, D) or (N, T, D).")
         if y.ndim != 1:
             raise ValueError("y must have shape (N,).")
         if ids.ndim != 1:
