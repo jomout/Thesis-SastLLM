@@ -237,3 +237,94 @@ class OrderedFunctionalityTimeSeriesEncoder:
         if 0 <= cluster_id < self.num_clusters:
             return cluster_id
         raise ValueError(f"Cluster id {cluster_id} out of range [0, {self.num_clusters}).")
+
+
+class OrderedFunctionalityTokenSequenceEncoder:
+    """
+    Encodes each repository as an ordered sequence of cluster-id tokens.
+
+    This is the memory-efficient sequence representation for embedding-based
+    models such as LSTMs and Transformers. Token `0` is reserved for padding;
+    real zero-based cluster ids are shifted by one, so cluster id `0` becomes
+    token `1` and cluster id `num_clusters - 1` becomes token `num_clusters`.
+    """
+
+    padding_token_id = 0
+
+    def __init__(
+        self,
+        *,
+        num_clusters: int,
+        labels: LabelMapping,
+        max_sequence_length: int | None = None,
+        truncation: Literal["first", "last"] = "first",
+    ) -> None:
+        if num_clusters <= 0:
+            raise ValueError("num_clusters must be > 0.")
+        if max_sequence_length is not None and max_sequence_length <= 0:
+            raise ValueError("max_sequence_length must be > 0 when provided.")
+        if truncation not in {"first", "last"}:
+            raise ValueError("truncation must be either 'first' or 'last'.")
+        self.num_clusters = num_clusters
+        self.labels = labels
+        self.max_sequence_length = max_sequence_length
+        self.truncation = truncation
+
+    @property
+    def feature_dim(self) -> int:
+        return self.num_clusters + 1
+
+    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding:
+        repos = list(repositories)
+        repository_ids = np.empty(len(repos), dtype=np.int64)
+        labels = np.empty(len(repos), dtype=np.int64)
+        sequences = [self._cluster_ids_ordered_by_functionality_id(repo) for repo in repos]
+
+        sequence_length = self.max_sequence_length
+        if sequence_length is None:
+            sequence_length = max((len(sequence) for sequence in sequences), default=0)
+
+        features = np.zeros((len(repos), sequence_length), dtype=np.int64)
+        sequence_lengths = np.zeros(len(repos), dtype=np.int64)
+
+        for row, (repo, sequence) in enumerate(zip(repos, sequences)):
+            repository_ids[row] = int(repo.repository_id)
+            labels[row] = self.labels.encode_label(repo.label)
+
+            truncated = self._truncate(sequence, sequence_length)
+            sequence_lengths[row] = len(truncated)
+            for step, cluster_id in enumerate(truncated):
+                features[row, step] = self._cluster_token_id(cluster_id)
+
+        return RepositoryEncoding(
+            repository_ids=repository_ids,
+            features=features,
+            labels=labels,
+            sequence_lengths=sequence_lengths,
+        )
+
+    def encode_repo(self, repo: GetClassificationRepositoryDto) -> np.ndarray:
+        sequence = self._cluster_ids_ordered_by_functionality_id(repo)
+        sequence_length = self.max_sequence_length or len(sequence)
+        features = np.zeros(sequence_length, dtype=np.int64)
+        for step, cluster_id in enumerate(self._truncate(sequence, sequence_length)):
+            features[step] = self._cluster_token_id(cluster_id)
+        return features
+
+    def _cluster_ids_ordered_by_functionality_id(self, repo: GetClassificationRepositoryDto) -> list[int]:
+        if not repo.ordered_functionalities:
+            return []
+        ordered = sorted(repo.ordered_functionalities, key=lambda functionality: functionality.functionality_id)
+        return [int(functionality.cluster_id) for functionality in ordered if functionality.cluster_id is not None]
+
+    def _truncate(self, sequence: list[int], sequence_length: int) -> list[int]:
+        if len(sequence) <= sequence_length:
+            return sequence
+        if self.truncation == "first":
+            return sequence[:sequence_length]
+        return sequence[-sequence_length:]
+
+    def _cluster_token_id(self, cluster_id: int) -> int:
+        if 0 <= cluster_id < self.num_clusters:
+            return cluster_id + 1
+        raise ValueError(f"Cluster id {cluster_id} out of range [0, {self.num_clusters}).")

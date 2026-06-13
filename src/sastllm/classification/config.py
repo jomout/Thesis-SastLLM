@@ -24,6 +24,8 @@ class TrainingConfig(BaseModel):
     k: int = 5000
     validation_size: float = 0.1
     num_workers: int = 4
+    use_weighted_sampler: bool = True
+    use_class_weights: bool = True
 
 
 class ModelConfig(BaseModel):
@@ -31,7 +33,14 @@ class ModelConfig(BaseModel):
 
     name: str = "mlp"
     hidden_dims: tuple[int, ...] = (512, 256)
+    embedding_dim: int = 128
+    hidden_dim: int = 128
+    num_layers: int = 1
     dropout: float = 0.2
+    bidirectional: bool = False
+    pooling: Literal["last", "mean", "max"] = "last"
+    max_sequence_length: int | None = None
+    truncation: Literal["first", "last"] = "first"
 
 
 @dataclass(frozen=True)
