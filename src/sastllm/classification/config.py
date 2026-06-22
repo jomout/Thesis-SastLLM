@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from sastllm.ml.models.config import MLPModelConfig, RepositoryModelConfig, parse_model_config
 from scripts.utils import load_yaml
 
 ClassificationMode = Literal["search", "train", "test"]
@@ -28,28 +29,13 @@ class TrainingConfig(BaseModel):
     use_class_weights: bool = True
 
 
-class ModelConfig(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    name: str = "mlp"
-    hidden_dims: tuple[int, ...] = (512, 256)
-    embedding_dim: int = 128
-    hidden_dim: int = 128
-    num_layers: int = 1
-    dropout: float = 0.2
-    bidirectional: bool = False
-    pooling: Literal["last", "mean", "max"] = "last"
-    max_sequence_length: int | None = None
-    truncation: Literal["first", "last"] = "first"
-
-
 @dataclass(frozen=True)
 class ClassificationConfig:
     save_model_dir: Path | None
     load_model_dir: Path | None
     save_plots_dir: Path | None
     training: TrainingConfig
-    model: ModelConfig
+    model: RepositoryModelConfig
     grid_search: dict[str, tuple[Any, ...]] | None = None
 
     @classmethod
@@ -60,11 +46,18 @@ class ClassificationConfig:
             raise ValueError(f"Missing 'classification.{mode}' section in {config_path}.")
 
         params = raw.get("params", {})
-        model = raw.get("model", {})
         if not isinstance(params, dict):
             raise ValueError(f"'classification.{mode}.params' must be a mapping.")
-        if not isinstance(model, dict):
-            raise ValueError(f"'classification.{mode}.model' must be a mapping when provided.")
+
+        model_name = raw.get("model")
+        if not isinstance(model_name, str) or not model_name:
+            raise ValueError(f"'classification.{mode}.model' must name a profile from models.")
+        models = root.get("models")
+        if not isinstance(models, dict):
+            raise ValueError(f"Missing top-level 'models' mapping in {config_path}.")
+        if model_name not in models:
+            raise ValueError(f"Model profile {model_name!r} selected by classification.{mode} is not defined in models.")
+        model = parse_model_config(model_name, models[model_name])
 
         save_dir = raw.get("save_model_dir")
         load_dir = raw.get("load_model_dir")
@@ -84,7 +77,7 @@ class ClassificationConfig:
             load_model_dir=Path(load_dir) if load_dir else None,
             save_plots_dir=Path(plots_dir) if plots_dir else None,
             training=TrainingConfig(**params),
-            model=ModelConfig(**model),
+            model=model,
             grid_search=grid_search if mode == "search" else None,
         )
 
@@ -142,7 +135,7 @@ def coerce_mode_config(mode: ClassificationMode, params: dict[str, Any], save_or
         load_model_dir=Path(save_or_load_dir) if mode == "test" else None,
         save_plots_dir=None,
         training=TrainingConfig(**params),
-        model=ModelConfig(),
+        model=MLPModelConfig(),
     )
 
 

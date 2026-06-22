@@ -113,8 +113,32 @@ Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer
 Current content:
 
 ```yaml
+models:
+  mlp:
+    hidden_dims: [512, 256]
+    dropout: 0.2
+  lstm:
+    embedding_dim: 128
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    bidirectional: false
+    pooling: "last"
+    max_sequence_length: 512
+    truncation: "first"
+  transformer:
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
 classification:
   train:
+    model: lstm
     save_model_dir: "models/classification/trained_models"
     params:
       k: 10661
@@ -126,6 +150,7 @@ classification:
       seed: 42
 
   test:
+    model: lstm
     load_model_dir: "models/classification/trained_models/model_20260426_204737"
     params:
       k: 10661
@@ -143,6 +168,8 @@ Used by:
 - `sastllm classify --mode test`
 
 Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
+
+Model architecture fields live in strict reusable profiles under `models`. Each classification mode selects one profile by name. Optimization and data-loading fields remain under the mode's `params` mapping.
 
 ## `languages.yaml`
 

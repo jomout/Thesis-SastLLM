@@ -59,26 +59,42 @@ clustering:
 Classification:
 
 ```yaml
+models:
+  mlp:
+    hidden_dims: [512, 256]
+    dropout: 0.2
+  lstm:
+    embedding_dim: 128
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    bidirectional: false
+    pooling: "last"
+    max_sequence_length: 512
+    truncation: "first"
+  transformer:
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
 classification:
   search:
+    model: mlp
     save_model_dir: "models/classification/searching_models"
     save_plots_dir: "plots/classification/searching"
   train:
+    model: lstm
     save_model_dir: "models/classification/trained_models"
-    model:
-      name: "lstm"
-      embedding_dim: 128
-      hidden_dim: 128
-      num_layers: 1
-      dropout: 0.2
-      bidirectional: false
-      pooling: "last"
-      max_sequence_length: 512
-      truncation: "first"
     params:
       use_weighted_sampler: true
       use_class_weights: false
   test:
+    model: lstm
     load_model_dir: "models/classification/trained_models/model_20260426_204737"
 ```
 
@@ -108,6 +124,9 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 - `classification.yaml` may use `l1_param`; the classification config maps it to `l1_lambda`.
 - `use_weighted_sampler` controls training-batch rebalancing.
 - `use_class_weights` controls weighted `CrossEntropyLoss`.
-- `model.name: "mlp"` uses aggregate cluster-distribution vectors.
-- `model.name: "lstm"` uses ordered functionality-cluster token sequences plus a learned embedding layer.
+- `classification.<mode>.model` selects a strict profile from the top-level `models` registry.
+- `model: mlp` uses aggregate cluster-distribution vectors.
+- `model: lstm` uses ordered functionality-cluster token sequences plus a learned embedding layer.
+- `model: transformer` uses ordered functionality-cluster tokens, learned positional embeddings, and padding-masked self-attention.
 - For LSTM models, `embedding_dim` controls the learned cluster-token embedding width, `max_sequence_length` controls sequence padding/truncation, and `pooling` may be `last`, `mean`, or `max`.
+- For Transformer models, `embedding_dim` must be divisible by `num_heads`; `feedforward_dim` sets the encoder feed-forward width. Start with `max_sequence_length: 256` because attention cost grows quadratically with sequence length.

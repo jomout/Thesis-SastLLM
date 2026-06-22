@@ -14,7 +14,7 @@ from lightning import seed_everything
 from sastllm.configs import get_logger
 from sastllm.db import RepositoryManager
 from sastllm.ml import RepositoryDataModule
-from sastllm.ml.models import RepositoryClassifierModule, build_model
+from sastllm.ml.models import LSTMModelConfig, RepositoryClassifierModule, TransformerModelConfig, build_model, model_class_for
 from sastllm.ml.training import AccuracyHistoryCallback, AccuracyHistoryRecord, best_checkpoint_path, build_trainer
 from sastllm.utils.observability import count_parameters, log_duration
 
@@ -33,7 +33,7 @@ class RepositoryClassificationService:
 
     Swappable pieces:
     - repository encoder: any object implementing `RepositoryEncoderProtocol`
-    - model: selected through `classification.<mode>.model.name`
+    - model: selected through `classification.<mode>.model`
     - dataset assembly: `RepositoryDatasetBuilder`
     """
 
@@ -232,7 +232,7 @@ class RepositoryClassificationService:
         labels = labels[labels >= 0]
         class_counts = dict(zip(*np.unique(labels, return_counts=True)))
         model = build_model(
-            name=self.config.model.name,
+            config=self.config.model,
             input_dim=self._model_input_dim(),
             output_dim=len(self.labels.index_to_label),
             lr=self.config.training.lr,
@@ -240,13 +240,6 @@ class RepositoryClassificationService:
             l1_lambda=self.config.training.l1_lambda,
             class_counts=class_counts,
             use_class_weights=self.config.training.use_class_weights,
-            hidden_dims=self.config.model.hidden_dims,
-            embedding_dim=self.config.model.embedding_dim,
-            hidden_dim=self.config.model.hidden_dim,
-            num_layers=self.config.model.num_layers,
-            dropout=self.config.model.dropout,
-            bidirectional=self.config.model.bidirectional,
-            pooling=self.config.model.pooling,
         )
         total_parameters, trainable_parameters = count_parameters(model)
         logger.info(
@@ -286,16 +279,10 @@ class RepositoryClassificationService:
         return model
 
     def _model_class(self):
-        from sastllm.ml.models import LSTMRepositoryClassifier, MLPRepositoryClassifier
-
-        if self.config.model.name == "mlp":
-            return MLPRepositoryClassifier
-        if self.config.model.name == "lstm":
-            return LSTMRepositoryClassifier
-        raise ValueError(f"Unsupported repository classifier model: {self.config.model.name!r}.")
+        return model_class_for(self.config.model)
 
     def _default_encoder(self) -> RepositoryEncoderProtocol:
-        if self.config.model.name == "lstm":
+        if isinstance(self.config.model, (LSTMModelConfig, TransformerModelConfig)):
             return OrderedFunctionalityTokenSequenceEncoder(
                 num_clusters=self.config.training.k,
                 labels=self.labels,

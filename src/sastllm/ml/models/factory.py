@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Optional
 
 from .base import RepositoryClassifierModule
+from .config import LSTMModelConfig, MLPModelConfig, RepositoryModelConfig, TransformerModelConfig
 from .lstm import LSTMRepositoryClassifier
 from .mlp import MLPRepositoryClassifier
+from .transformer import TransformerRepositoryClassifier
+
+RepositoryModelClass = type[RepositoryClassifierModule]
 
 
 def build_model(
     *,
-    name: str,
+    config: RepositoryModelConfig,
     input_dim: int,
     output_dim: int,
     lr: float,
@@ -17,40 +21,60 @@ def build_model(
     l1_lambda: float,
     class_counts: Optional[dict[int, int]],
     use_class_weights: bool = True,
-    hidden_dims: tuple[int, ...] = (512, 256),
-    embedding_dim: int = 128,
-    hidden_dim: int = 128,
-    num_layers: int = 1,
-    dropout: float = 0.2,
-    bidirectional: bool = False,
-    pooling: Literal["last", "mean", "max"] = "last",
 ) -> RepositoryClassifierModule:
-    if name == "mlp":
+    if isinstance(config, MLPModelConfig):
         return MLPRepositoryClassifier(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=hidden_dims,
-            dropout=dropout,
+            hidden_dims=config.hidden_dims,
+            dropout=config.dropout,
             lr=lr,
             weight_decay=weight_decay,
             l1_lambda=l1_lambda,
             class_counts=class_counts,
             use_class_weights=use_class_weights,
         )
-    if name == "lstm":
+    if isinstance(config, LSTMModelConfig):
         return LSTMRepositoryClassifier(
             input_dim=input_dim,
             output_dim=output_dim,
-            embedding_dim=embedding_dim,
-            hidden_dim=hidden_dim,
-            num_layers=num_layers,
-            dropout=dropout,
-            bidirectional=bidirectional,
-            pooling=pooling,
+            embedding_dim=config.embedding_dim,
+            hidden_dim=config.hidden_dim,
+            num_layers=config.num_layers,
+            dropout=config.dropout,
+            bidirectional=config.bidirectional,
+            pooling=config.pooling,
             lr=lr,
             weight_decay=weight_decay,
             l1_lambda=l1_lambda,
             class_counts=class_counts,
             use_class_weights=use_class_weights,
         )
-    raise ValueError(f"Unsupported repository classifier model: {name!r}.")
+    if isinstance(config, TransformerModelConfig):
+        return TransformerRepositoryClassifier(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            embedding_dim=config.embedding_dim,
+            num_layers=config.num_layers,
+            num_heads=config.num_heads,
+            feedforward_dim=config.feedforward_dim,
+            max_sequence_length=config.max_sequence_length,
+            dropout=config.dropout,
+            pooling=config.pooling,
+            lr=lr,
+            weight_decay=weight_decay,
+            l1_lambda=l1_lambda,
+            class_counts=class_counts,
+            use_class_weights=use_class_weights,
+        )
+    raise TypeError(f"Unsupported repository model config: {type(config).__name__}.")
+
+
+def model_class_for(config: RepositoryModelConfig) -> RepositoryModelClass:
+    if isinstance(config, MLPModelConfig):
+        return MLPRepositoryClassifier
+    if isinstance(config, LSTMModelConfig):
+        return LSTMRepositoryClassifier
+    if isinstance(config, TransformerModelConfig):
+        return TransformerRepositoryClassifier
+    raise TypeError(f"Unsupported repository model config: {type(config).__name__}.")

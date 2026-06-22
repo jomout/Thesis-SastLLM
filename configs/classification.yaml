@@ -1,10 +1,38 @@
+models:
+  mlp:
+    hidden_dims: [512, 256]
+    dropout: 0.2
+
+  lstm:
+    embedding_dim: 128
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    bidirectional: false
+    pooling: "last"
+    max_sequence_length: 512
+    truncation: "first"
+
+  transformer:
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
 classification:
   search:
+    model: mlp
     save_model_dir: "models/classification/searching_models"
     save_plots_dir: "plots/classification/searching"
     params:
       k: 10661
       seed: 42
+      use_weighted_sampler: true
+      use_class_weights: false
     grid_search:
       lr: [0.0001, 0.0005, 0.001]
       weight_decay: [0.0001, 0.0005, 0.001]
@@ -13,22 +41,28 @@ classification:
       epochs: [50]
 
   train:
+    model: lstm
     save_model_dir: "models/classification/trained_models"
     params:
       k: 10661
-      lr: 0.0005
-      weight_decay: 0.001
+      lr: 0.0001
+      weight_decay: 0.0001
       l1_param: 0.001
-      epochs: 30
-      batch_size: 16
+      epochs: 50
+      batch_size: 32
+      use_weighted_sampler: true
+      use_class_weights: false
       seed: 42
 
   test:
-    load_model_dir: "models/classification/trained_models/binary_classifier_model"
+    model: lstm
+    load_model_dir: "models/classification/trained_models/model_20260613_195403"
     params:
       k: 10661
-      lr: 0.0005
-      weight_decay: 0.001
+      lr: 0.0001
+      weight_decay: 0.0001
       l1_param: 0.001
-      batch_size: 16
+      batch_size: 32
+      use_weighted_sampler: true
+      use_class_weights: false
       seed: 42
