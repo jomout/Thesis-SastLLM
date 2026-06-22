@@ -67,6 +67,8 @@ line-ending = "lf"
 
 [project.scripts]
 sastllm = "scripts.cli:main"
+sastllm-inspect-distribution = "scripts.inspect_repository_distribution_encoding:main"
+sastllm-inspect-timeseries = "scripts.inspect_repository_timeseries_encoding:main"
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]

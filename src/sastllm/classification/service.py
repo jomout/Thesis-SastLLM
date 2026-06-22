@@ -20,7 +20,7 @@ from sastllm.utils.observability import count_parameters, log_duration
 
 from .config import ClassificationConfig
 from .data import RepositoryDatasetBuilder
-from .encoders import ClusterDistributionEncoder, LabelMapping, RepositoryEncoderProtocol
+from .encoders import ClusterDistributionEncoder, LabelMapping, OrderedFunctionalityTokenSequenceEncoder, RepositoryEncoderProtocol
 from .metrics import compute_classification_metrics
 
 logger = get_logger(__name__)
@@ -49,7 +49,7 @@ class RepositoryClassificationService:
         self.config = config
         self.labels = labels or LabelMapping.from_split_config()
         self.repository_manager = repository_manager or RepositoryManager()
-        self.encoder = encoder or ClusterDistributionEncoder(num_clusters=config.training.k, labels=self.labels)
+        self.encoder = encoder or self._default_encoder()
         seed_everything(config.training.seed, workers=True)
         logger.info(
             "Initializing repository classification service",
@@ -219,6 +219,7 @@ class RepositoryClassificationService:
             test_indices=self.bundle.test_indices,
             batch_size=self.config.training.batch_size,
             num_workers=self.config.training.num_workers,
+            use_weighted_sampler=self.config.training.use_weighted_sampler,
         )
 
     def datamodule(self) -> RepositoryDataModule:
@@ -232,22 +233,31 @@ class RepositoryClassificationService:
         class_counts = dict(zip(*np.unique(labels, return_counts=True)))
         model = build_model(
             name=self.config.model.name,
-            input_dim=int(self.bundle.dataset.X.shape[1]),
+            input_dim=self._model_input_dim(),
             output_dim=len(self.labels.index_to_label),
             lr=self.config.training.lr,
             weight_decay=self.config.training.weight_decay,
             l1_lambda=self.config.training.l1_lambda,
             class_counts=class_counts,
+            use_class_weights=self.config.training.use_class_weights,
             hidden_dims=self.config.model.hidden_dims,
+            embedding_dim=self.config.model.embedding_dim,
+            hidden_dim=self.config.model.hidden_dim,
+            num_layers=self.config.model.num_layers,
             dropout=self.config.model.dropout,
+            bidirectional=self.config.model.bidirectional,
+            pooling=self.config.model.pooling,
         )
         total_parameters, trainable_parameters = count_parameters(model)
         logger.info(
             "Built repository classifier model",
             model=self.config.model.name,
-            input_dim=int(self.bundle.dataset.X.shape[1]),
+            input_dim=self._model_input_dim(),
+            feature_shape=tuple(self.bundle.dataset.X.shape),
             output_dim=len(self.labels.index_to_label),
             class_counts={int(k): int(v) for k, v in class_counts.items()},
+            use_class_weights=self.config.training.use_class_weights,
+            use_weighted_sampler=self.config.training.use_weighted_sampler,
             total_parameters=total_parameters,
             trainable_parameters=trainable_parameters,
         )
@@ -276,11 +286,28 @@ class RepositoryClassificationService:
         return model
 
     def _model_class(self):
-        from sastllm.ml.models import MLPRepositoryClassifier
+        from sastllm.ml.models import LSTMRepositoryClassifier, MLPRepositoryClassifier
 
         if self.config.model.name == "mlp":
             return MLPRepositoryClassifier
+        if self.config.model.name == "lstm":
+            return LSTMRepositoryClassifier
         raise ValueError(f"Unsupported repository classifier model: {self.config.model.name!r}.")
+
+    def _default_encoder(self) -> RepositoryEncoderProtocol:
+        if self.config.model.name == "lstm":
+            return OrderedFunctionalityTokenSequenceEncoder(
+                num_clusters=self.config.training.k,
+                labels=self.labels,
+                max_sequence_length=self.config.model.max_sequence_length,
+                truncation=self.config.model.truncation,
+            )
+        return ClusterDistributionEncoder(num_clusters=self.config.training.k, labels=self.labels)
+
+    def _model_input_dim(self) -> int:
+        if self.bundle is None:
+            raise RuntimeError("Classification dataset bundle has not been built.")
+        return int(self.encoder.feature_dim)
 
     def _persist_checkpoint(self, trainer, model_dir: Path) -> None:
         best_src = best_checkpoint_path(trainer)

@@ -19,19 +19,22 @@ class RepositoryClassifierModule(LightningModule):
         weight_decay: float,
         l1_lambda: float,
         class_counts: Optional[dict[int, int]],
+        use_class_weights: bool = False,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=["class_counts"])
         self.output_dim = output_dim
 
-        if class_counts is not None:
+        criterion_weight: torch.Tensor | None = None
+        if use_class_weights and class_counts is not None:
             counts = torch.tensor([class_counts.get(i, 0) for i in range(output_dim)], dtype=torch.float)
             weights = 1.0 / (counts + 1e-6)
             weights = weights / weights.sum()
+            criterion_weight = weights
         else:
             weights = torch.ones(output_dim, dtype=torch.float)
         self.register_buffer("class_weights", weights)
-        self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
+        self.criterion = nn.CrossEntropyLoss(weight=criterion_weight)
 
     @abstractmethod
     def forward(self, x: torch.Tensor) -> torch.Tensor:

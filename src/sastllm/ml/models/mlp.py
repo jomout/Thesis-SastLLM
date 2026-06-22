@@ -20,6 +20,7 @@ class MLPRepositoryClassifier(RepositoryClassifierModule):
         weight_decay: float = 1e-4,
         l1_lambda: float = 0.0,
         class_counts: Optional[dict[int, int]] = None,
+        use_class_weights: bool = False,
     ) -> None:
         super().__init__(
             output_dim=output_dim,
@@ -27,6 +28,7 @@ class MLPRepositoryClassifier(RepositoryClassifierModule):
             weight_decay=weight_decay,
             l1_lambda=l1_lambda,
             class_counts=class_counts,
+            use_class_weights=use_class_weights,
         )
         self.save_hyperparameters(ignore=["class_counts"])
         layers: list[nn.Module] = []

@@ -30,6 +30,8 @@ Code repositories
 | 4. Functionality clustering | `sastllm cluster --mode ...` | `functionalities.cluster_id`, clustering model | [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md) |
 | 5. Repository classification | `sastllm classify --mode ...` | model artifacts, predictions, metrics | [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md) |
 
+For debugging and validation, `sastllm-inspect-distribution` and `sastllm-inspect-timeseries` inspect one repository and print how its clustered functionalities are encoded before model training.
+
 Storage and configuration references:
 
 - [06_STORAGE_AND_DATA_ACCESS.md](./06_STORAGE_AND_DATA_ACCESS.md)

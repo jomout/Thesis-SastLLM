@@ -2,6 +2,8 @@ from .config import ClassificationConfig, ClassificationMode, ModelConfig, Train
 from .encoders import (
     ClusterDistributionEncoder,
     LabelMapping,
+    OrderedFunctionalityTimeSeriesEncoder,
+    OrderedFunctionalityTokenSequenceEncoder,
     RepositoryEncoding,
 )
 from .service import RepositoryClassificationService
@@ -12,6 +14,8 @@ __all__ = [
     "ClusterDistributionEncoder",
     "LabelMapping",
     "ModelConfig",
+    "OrderedFunctionalityTokenSequenceEncoder",
+    "OrderedFunctionalityTimeSeriesEncoder",
     "RepositoryClassificationService",
     "RepositoryEncoding",
     "TrainingConfig",

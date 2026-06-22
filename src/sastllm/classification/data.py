@@ -58,9 +58,10 @@ class RepositoryDatasetBuilder:
         )
 
         encoding = self.encoder.encode(self._normalize_labels(repositories))
+        feature_dtype = torch.long if encoding.features.dtype.kind in {"i", "u"} else torch.float32
         dataset = RepositoryTensorDataset(
             ids=torch.tensor(encoding.repository_ids, dtype=torch.long),
-            X=torch.tensor(encoding.features, dtype=torch.float32),
+            X=torch.tensor(encoding.features, dtype=feature_dtype),
             y=torch.tensor(encoding.labels, dtype=torch.long),
         )
         nonzero = int((dataset.X != 0).sum().item())
@@ -68,7 +69,8 @@ class RepositoryDatasetBuilder:
         logger.info(
             "Encoded repository dataset",
             samples=len(dataset),
-            feature_dim=int(dataset.X.shape[1]),
+            feature_shape=tuple(dataset.X.shape),
+            feature_dim=int(dataset.X.shape[-1]),
             nonzero_features=nonzero,
             feature_density=round(nonzero / total_features, 6) if total_features else 0.0,
         )

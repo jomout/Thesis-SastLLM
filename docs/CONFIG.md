@@ -65,6 +65,19 @@ classification:
     save_plots_dir: "plots/classification/searching"
   train:
     save_model_dir: "models/classification/trained_models"
+    model:
+      name: "lstm"
+      embedding_dim: 128
+      hidden_dim: 128
+      num_layers: 1
+      dropout: 0.2
+      bidirectional: false
+      pooling: "last"
+      max_sequence_length: 512
+      truncation: "first"
+    params:
+      use_weighted_sampler: true
+      use_class_weights: false
   test:
     load_model_dir: "models/classification/trained_models/model_20260426_204737"
 ```
@@ -93,3 +106,8 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 - The Qdrant collection name is derived from `split.model_name` by replacing `/` with `_`.
 - The classifier `k` should match the clustering `k`.
 - `classification.yaml` may use `l1_param`; the classification config maps it to `l1_lambda`.
+- `use_weighted_sampler` controls training-batch rebalancing.
+- `use_class_weights` controls weighted `CrossEntropyLoss`.
+- `model.name: "mlp"` uses aggregate cluster-distribution vectors.
+- `model.name: "lstm"` uses ordered functionality-cluster token sequences plus a learned embedding layer.
+- For LSTM models, `embedding_dim` controls the learned cluster-token embedding width, `max_sequence_length` controls sequence padding/truncation, and `pooling` may be `last`, `mean`, or `max`.
