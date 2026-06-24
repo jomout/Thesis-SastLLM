@@ -41,20 +41,45 @@ They do not load data, split data, generate functionalities, or create embedding
 Current `configs/classification.yaml`:
 
 ```yaml
+models:
+  mlp:
+    hidden_dims: [512, 256]
+    dropout: 0.2
+  lstm:
+    embedding_dim: 128
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    bidirectional: false
+    pooling: "last"
+    max_sequence_length: 512
+    truncation: "first"
+  transformer:
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
 classification:
   train:
+    model: lstm
     save_model_dir: "models/classification/trained_models"
     params:
       k: 10661
-      lr: 0.0005
-      weight_decay: 0.0005
-      l1_param: 0.005
-      epochs: 30
-      batch_size: 64
+      lr: 0.0001
+      weight_decay: 0.0001
+      l1_param: 0.001
+      epochs: 50
+      batch_size: 32
       seed: 42
 
   test:
-    load_model_dir: "models/classification/trained_models/model_20260426_204737"
+    model: lstm
+    load_model_dir: "models/classification/trained_models/model_20260613_195403"
     params:
       k: 10661
       lr: 0.0005
@@ -147,7 +172,7 @@ This representation preserves functionality order and is suitable for sequence o
 
 For large `k`, this one-hot representation can be too large for model training. With `12278` repositories, `512` timesteps, and `10661` clusters, a dense float32 one-hot tensor would require about `250 GiB`.
 
-`OrderedFunctionalityTokenSequenceEncoder` is the memory-efficient alternative used by the LSTM path. It keeps the same ordering, but stores one integer token per timestep:
+`OrderedFunctionalityTokenSequenceEncoder` is the memory-efficient alternative used by the LSTM and Transformer paths. It keeps the same ordering, but stores one integer token per timestep:
 
 ```text
 shape = [repositories, timesteps]
@@ -160,11 +185,19 @@ cluster_id 0 -> token 1
 cluster_id 5 -> token 6
 ```
 
-The LSTM then learns a compact embedding for these cluster tokens instead of receiving a dense one-hot vector.
+The sequence model then learns a compact embedding for these cluster tokens instead of receiving a dense one-hot vector.
 
 ## Model selection
 
-Models are selected with `classification.<mode>.model.name`.
+Model architecture profiles are defined once under the top-level `models` mapping. Each classification mode selects one profile by name with `classification.<mode>.model`.
+
+Architecture profiles are strict and model-specific:
+
+- `models.mlp` accepts only MLP architecture fields
+- `models.lstm` accepts only LSTM and sequence-encoding fields
+- `models.transformer` accepts only Transformer and sequence-encoding fields
+
+Unknown or misplaced model fields fail during configuration loading instead of being silently ignored. Learning rate, batch size, class balancing, and other experiment/runtime settings remain under `classification.<mode>.params` because they are not architecture definitions.
 
 Supported model names:
 
@@ -172,24 +205,38 @@ Supported model names:
 | --- | --- | --- |
 | `mlp` | `ClusterDistributionEncoder`, shape `[repositories, k]` | `src/sastllm/ml/models/mlp.py` |
 | `lstm` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/lstm.py` |
+| `transformer` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/transformer.py` |
 
-When `model.name` is `lstm`, `RepositoryClassificationService` automatically uses the ordered token-sequence encoder unless an encoder is injected explicitly.
+When the selected profile is `lstm` or `transformer`, `RepositoryClassificationService` automatically uses the ordered token-sequence encoder unless an encoder is injected explicitly.
 
-Example LSTM config:
+### Transformer input decision
+
+The Transformer uses ordered cluster-token sequences rather than cluster distributions:
+
+- token sequences preserve functionality order, which self-attention and positional embeddings can model
+- integer tokens avoid the memory cost of one-hot vectors
+- padding token `0` gives the model a reliable attention mask
+- cluster distributions remain the simpler, stronger baseline for the MLP when order is not required
+
+A hybrid distribution-plus-token model may be useful later, but it is intentionally not part of this baseline. It would require a multi-input dataset contract and a fusion architecture, making it harder to determine whether improvements come from attention or from simply reintroducing aggregate frequency features.
+
+Example LSTM profile and selection:
 
 ```yaml
+models:
+  lstm:
+    embedding_dim: 128
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    bidirectional: false
+    pooling: "last"
+    max_sequence_length: 512
+    truncation: "first"
+
 classification:
   train:
-    model:
-      name: "lstm"
-      embedding_dim: 128
-      hidden_dim: 128
-      num_layers: 1
-      dropout: 0.2
-      bidirectional: false
-      pooling: "last"
-      max_sequence_length: 512
-      truncation: "first"
+    model: lstm
     params:
       use_weighted_sampler: true
       use_class_weights: false
@@ -200,6 +247,35 @@ classification:
 - `last`: use the last non-padding timestep
 - `mean`: average non-padding timesteps
 - `max`: max-pool over non-padding timesteps
+
+Example Transformer profile and selection:
+
+```yaml
+models:
+  transformer:
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
+classification:
+  train:
+    model: transformer
+    params:
+      batch_size: 16
+      use_weighted_sampler: true
+      use_class_weights: false
+```
+
+The Transformer adds learned positional embeddings and masks padding tokens during self-attention. `embedding_dim` must be divisible by `num_heads`. `pooling: "mean"` is the recommended baseline because it summarizes all non-padding functionality states.
+
+Self-attention cost grows approximately with the square of sequence length. Start with `max_sequence_length: 256` and a smaller batch size, then increase only after checking memory and runtime.
+
+For testing, set `classification.test.model` to `transformer` and point `load_model_dir` to the trained Transformer directory. Selecting the same shared profile ensures the test encoder uses the training sequence length and truncation policy. Model architecture parameters are also restored from the checkpoint.
 
 ## Class imbalance controls
 
@@ -214,7 +290,7 @@ params:
 - `use_weighted_sampler`: balances training batches by sampling rare-class examples more often.
 - `use_class_weights`: gives rare classes higher `CrossEntropyLoss` weight.
 
-Using both at the same time can overcorrect minority classes. For LSTM experiments, a good starting point is `use_weighted_sampler: true` and `use_class_weights: false`.
+Using both at the same time can overcorrect minority classes. For LSTM and Transformer experiments, a good starting point is `use_weighted_sampler: true` and `use_class_weights: false`.
 
 Binary labels come from `configs/split.yaml`:
 

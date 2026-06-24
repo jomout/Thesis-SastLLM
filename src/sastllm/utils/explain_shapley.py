@@ -7,12 +7,12 @@ from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
-import shap
+import shap  # type: ignore[import-untyped]
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from sastllm.classification import ClassificationConfig, LabelMapping, ModelConfig, RepositoryClassificationService, TrainingConfig
+from sastllm.classification import ClassificationConfig, LabelMapping, MLPModelConfig, RepositoryClassificationService, TrainingConfig
 from sastllm.configs import get_logger
 from sastllm.ml import RepositoryDataModule
 from sastllm.ml.models import MLPRepositoryClassifier
@@ -171,19 +171,22 @@ def run_shap(
         epochs=30,
         lr=0.0005,
         weight_decay=1e-3,
-        l1_lambda=1e-3,
+        l1_param=1e-3,
         seed=42,
         k=10661,
     )
     config = ClassificationConfig(
         save_model_dir=None,
         load_model_dir=model_dir,
+        save_plots_dir=None,
         training=training,
-        model=ModelConfig(),
+        model=MLPModelConfig(),
     )
     service = RepositoryClassificationService(config=config)
     dm = service.datamodule()
 
+    if service.bundle is None:
+        raise RuntimeError("Classification dataset bundle has not been built.")
     labels = service.bundle.dataset.y.numpy(force=True)
     class_counts = dict(zip(*np.unique(labels, return_counts=True)))
 

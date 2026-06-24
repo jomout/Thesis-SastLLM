@@ -1,4 +1,6 @@
-from .config import ClassificationConfig, ClassificationMode, ModelConfig, TrainingConfig
+from sastllm.ml.models import LSTMModelConfig, MLPModelConfig, RepositoryModelConfig, TransformerModelConfig
+
+from .config import ClassificationConfig, ClassificationMode, TrainingConfig
 from .encoders import (
     ClusterDistributionEncoder,
     LabelMapping,
@@ -13,10 +15,13 @@ __all__ = [
     "ClassificationMode",
     "ClusterDistributionEncoder",
     "LabelMapping",
-    "ModelConfig",
+    "LSTMModelConfig",
+    "MLPModelConfig",
     "OrderedFunctionalityTokenSequenceEncoder",
     "OrderedFunctionalityTimeSeriesEncoder",
     "RepositoryClassificationService",
     "RepositoryEncoding",
+    "RepositoryModelConfig",
     "TrainingConfig",
+    "TransformerModelConfig",
 ]
