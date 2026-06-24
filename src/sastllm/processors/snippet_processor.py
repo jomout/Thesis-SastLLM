@@ -5,12 +5,13 @@ from itertools import islice
 from time import sleep
 from typing import Any, Dict, Iterator, List, Tuple
 
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 
 from sastllm.analyzers import FunctionalityAnalyzer
 from sastllm.configs import get_logger
 from sastllm.db import FunctionalityManager, SnippetManager
-from sastllm.dtos import CreateFunctionalityDto, GetExtendedSnippetDto, UpdateSnippetDto
+from sastllm.dtos import CreateFunctionalityDto, UpdateSnippetDto
+from sastllm.entities import SnippetWithFileAndRepository
 from sastllm.parsers import TreeSitterGenerator
 from sastllm.prompt import FunctionalityPromptGenerator
 from sastllm.utils import Normalizer
@@ -102,7 +103,7 @@ class SnippetProcessor:
 
         logger.debug("SnippetProcessor initialized.")
 
-    def run_batch(self, code_snippets: List[GetExtendedSnippetDto]) -> None:
+    def run_batch(self, code_snippets: List[SnippetWithFileAndRepository]) -> None:
         """
         Processes a single batch of code snippets through the full pipeline.
 
@@ -114,7 +115,7 @@ class SnippetProcessor:
             5. Normalize descriptions and store them in the database.
 
         Args:
-            code_snippets (List[GetExtendedSnippetDto]): List of code snippet objects to analyze.
+            code_snippets: Snippet entities with file and repository metadata.
         """
         logger.debug(f"Generating functionalities for {len(code_snippets)} code snippets.")
 
@@ -190,7 +191,7 @@ class SnippetProcessor:
         logger.info("Snippet processing completed successfully.")
 
     @staticmethod
-    def _parse_functionality_output(output: str) -> Dict[str, List[str]]:
+    def _parse_functionality_output(output: str) -> Dict[int, List[str]]:
         """
         Parse LLM output in the format:
         <chunk_number>: <functionality 1>; <functionality 2>; <functionality 3>
@@ -230,11 +231,11 @@ class SnippetProcessor:
         except Exception as file_err:
             logger.warning(f"Failed to write file for {snippet_id}: {file_err}")
 
-    def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[GetExtendedSnippetDto]], int]:
+    def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[SnippetWithFileAndRepository]], int]:
         """
         Fetches code snippets from the database and organizes them into batches.
         Returns:
-            Tuple[Iterator[List[GetExtendedSnippetDto]], int]: An iterator over batches of code snippets and the total number of batches.
+            An iterator over batches of snippet entities and the total number of batches.
         """
         # Fetch all unprocessed code snippets with file metadata
         snippets = self.snippet_db.get_snippets_with_file_meta(batch_size=self.batch_size)
@@ -263,12 +264,12 @@ class SnippetProcessor:
                 break
             yield batch
 
-    def _store_functionalities(self, extracted_data: Dict[str, List[str]]) -> None:
+    def _store_functionalities(self, extracted_data: Dict[int, List[str]]) -> None:
         """
         Normalizes and stores extracted functionalities in the database.
 
         Args:
-            extracted_data (Dict[str, List[str]]): Parsed functionalities grouped by chunk.
+            extracted_data: Parsed functionalities grouped by integer chunk number.
         """
         logger.debug("Storing extracted functionalities in the database.")
 

@@ -25,7 +25,7 @@ models:
 
 classification:
   search:
-    model: mlp
+    model: transformer
     save_model_dir: "models/classification/searching_models"
     save_plots_dir: "plots/classification/searching"
     params:
@@ -41,7 +41,7 @@ classification:
       epochs: [50]
 
   train:
-    model: lstm
+    model: transformer
     save_model_dir: "models/classification/trained_models"
     params:
       k: 10661
@@ -50,19 +50,19 @@ classification:
       l1_param: 0.001
       epochs: 50
       batch_size: 32
-      use_weighted_sampler: true
-      use_class_weights: false
+      use_weighted_sampler: false
+      use_class_weights: true
       seed: 42
 
   test:
-    model: lstm
-    load_model_dir: "models/classification/trained_models/model_20260613_195403"
+    model: transformer
+    load_model_dir: "models/classification/trained_models/model_20260624_220839"
     params:
       k: 10661
       lr: 0.0001
       weight_decay: 0.0001
       l1_param: 0.001
       batch_size: 32
-      use_weighted_sampler: true
-      use_class_weights: false
+      use_weighted_sampler: false
+      use_class_weights: true
       seed: 42

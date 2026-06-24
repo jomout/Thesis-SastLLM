@@ -6,7 +6,7 @@ from typing import Iterable, Literal, Protocol
 import numpy as np
 import torch
 
-from sastllm.dtos import GetClassificationRepositoryDto
+from sastllm.entities import RepositoryWithClusterDistribution
 
 from .config import load_label_map
 
@@ -47,7 +47,7 @@ class RepositoryEncoderProtocol(Protocol):
     @property
     def feature_dim(self) -> int: ...
 
-    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding: ...
+    def encode(self, repositories: Iterable[RepositoryWithClusterDistribution]) -> RepositoryEncoding: ...
 
 
 class ClusterDistributionEncoder:
@@ -75,7 +75,7 @@ class ClusterDistributionEncoder:
     def feature_dim(self) -> int:
         return self.num_clusters
 
-    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding:
+    def encode(self, repositories: Iterable[RepositoryWithClusterDistribution]) -> RepositoryEncoding:
         repos = list(repositories)
         features = np.zeros((len(repos), self.num_clusters), dtype=np.float32)
         repository_ids = np.empty(len(repos), dtype=np.int64)
@@ -112,7 +112,7 @@ class ClusterDistributionEncoder:
 
     def encode_repo_tokens(
         self,
-        repo: GetClassificationRepositoryDto,
+        repo: RepositoryWithClusterDistribution,
         max_tokens: int = 512,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         counts = self._validated_counts(repo.data or {})
@@ -183,7 +183,7 @@ class OrderedFunctionalityTimeSeriesEncoder:
     def feature_dim(self) -> int:
         return self.num_clusters
 
-    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding:
+    def encode(self, repositories: Iterable[RepositoryWithClusterDistribution]) -> RepositoryEncoding:
         repos = list(repositories)
         repository_ids = np.empty(len(repos), dtype=np.int64)
         labels = np.empty(len(repos), dtype=np.int64)
@@ -212,7 +212,7 @@ class OrderedFunctionalityTimeSeriesEncoder:
             sequence_lengths=sequence_lengths,
         )
 
-    def encode_repo(self, repo: GetClassificationRepositoryDto) -> np.ndarray:
+    def encode_repo(self, repo: RepositoryWithClusterDistribution) -> np.ndarray:
         sequence = self._cluster_ids_ordered_by_functionality_id(repo)
         sequence_length = self.max_sequence_length or len(sequence)
         features = np.zeros((sequence_length, self.num_clusters), dtype=np.float32)
@@ -220,7 +220,7 @@ class OrderedFunctionalityTimeSeriesEncoder:
             features[step, self._validated_cluster_index(cluster_id)] = 1.0
         return features
 
-    def _cluster_ids_ordered_by_functionality_id(self, repo: GetClassificationRepositoryDto) -> list[int]:
+    def _cluster_ids_ordered_by_functionality_id(self, repo: RepositoryWithClusterDistribution) -> list[int]:
         if not repo.ordered_functionalities:
             return []
         ordered = sorted(repo.ordered_functionalities, key=lambda functionality: functionality.functionality_id)
@@ -274,7 +274,7 @@ class OrderedFunctionalityTokenSequenceEncoder:
     def feature_dim(self) -> int:
         return self.num_clusters + 1
 
-    def encode(self, repositories: Iterable[GetClassificationRepositoryDto]) -> RepositoryEncoding:
+    def encode(self, repositories: Iterable[RepositoryWithClusterDistribution]) -> RepositoryEncoding:
         repos = list(repositories)
         repository_ids = np.empty(len(repos), dtype=np.int64)
         labels = np.empty(len(repos), dtype=np.int64)
@@ -303,7 +303,7 @@ class OrderedFunctionalityTokenSequenceEncoder:
             sequence_lengths=sequence_lengths,
         )
 
-    def encode_repo(self, repo: GetClassificationRepositoryDto) -> np.ndarray:
+    def encode_repo(self, repo: RepositoryWithClusterDistribution) -> np.ndarray:
         sequence = self._cluster_ids_ordered_by_functionality_id(repo)
         sequence_length = self.max_sequence_length or len(sequence)
         features = np.zeros(sequence_length, dtype=np.int64)
@@ -311,7 +311,7 @@ class OrderedFunctionalityTokenSequenceEncoder:
             features[step] = self._cluster_token_id(cluster_id)
         return features
 
-    def _cluster_ids_ordered_by_functionality_id(self, repo: GetClassificationRepositoryDto) -> list[int]:
+    def _cluster_ids_ordered_by_functionality_id(self, repo: RepositoryWithClusterDistribution) -> list[int]:
         if not repo.ordered_functionalities:
             return []
         ordered = sorted(repo.ordered_functionalities, key=lambda functionality: functionality.functionality_id)

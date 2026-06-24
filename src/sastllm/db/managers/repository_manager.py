@@ -11,13 +11,8 @@ from sastllm.db.models import (
     RepositoryModel,
     SnippetModel,
 )
-from sastllm.dtos import (
-    CreateRepositoryDto,
-    GetClassificationRepositoryDto,
-    GetFunctionalityClusterDto,
-    GetRepositoryDto,
-    UpdateRepositoryDto,
-)
+from sastllm.dtos import CreateRepositoryDto, UpdateRepositoryDto
+from sastllm.entities import FunctionalityWithCluster, Repository, RepositoryWithClusterDistribution
 
 logger = get_logger(__name__)
 
@@ -67,7 +62,7 @@ class RepositoryManager:
             logger.error(f"Failed to add repository: {e}")
             raise RuntimeError(f"Failed to add repository: {e}") from e
 
-    def get_repositories(self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100) -> Iterator[GetRepositoryDto]:
+    def get_repositories(self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100) -> Iterator[Repository]:
         """
         Lazily fetches all repository records from the database and yields them
         as dataclass instances.
@@ -78,7 +73,7 @@ class RepositoryManager:
             batch_size (int): Number of rows fetched per batch from the database cursor.
 
         Yields:
-            GetRepositoryDto: A data transfer object for each repository in the database.
+            Repository: A repository entity for each matching database row.
         """
         logger.debug("Fetching repositories from database.")
         with self.Session() as session:
@@ -86,7 +81,7 @@ class RepositoryManager:
             if split is not None:
                 query = query.filter(RepositoryModel.split == split)
             for r in query:
-                yield GetRepositoryDto(
+                yield Repository(
                     repository_id=cast(int, r.repository_id),
                     split=str(r.split) if r.split is not None else None,
                     name=str(r.name),
@@ -94,7 +89,7 @@ class RepositoryManager:
                     processed=bool(r.processed),
                 )
 
-    def get_repository(self, repository_id: int) -> Optional[GetRepositoryDto]:
+    def get_repository(self, repository_id: int) -> Optional[Repository]:
         """
         Fetches a repository record from the database identified by ID.
 
@@ -109,7 +104,7 @@ class RepositoryManager:
             r = session.query(RepositoryModel).filter_by(repository_id=repository_id).one_or_none()
             if r is None:
                 return None
-            return GetRepositoryDto(
+            return Repository(
                 repository_id=cast(int, r.repository_id),
                 split=str(r.split) if r.split is not None else None,
                 name=str(r.name),
@@ -117,7 +112,7 @@ class RepositoryManager:
                 processed=bool(r.processed),
             )
 
-    def get_repository_by_name(self, name: str) -> Optional[GetRepositoryDto]:
+    def get_repository_by_name(self, name: str) -> Optional[Repository]:
         """
         Fetches a repository record from the database identified by name.
 
@@ -131,7 +126,7 @@ class RepositoryManager:
             r = session.query(RepositoryModel).filter_by(name=name).one_or_none()
             if r is None:
                 return None
-            return GetRepositoryDto(
+            return Repository(
                 repository_id=cast(int, r.repository_id),
                 split=str(r.split) if r.split is not None else None,
                 name=str(r.name),
@@ -183,7 +178,11 @@ class RepositoryManager:
             logger.error(f"Failed to update repository {repository.repository_id}: {e}")
             raise RuntimeError(f"Failed to update repository {repository.repository_id}: {e}") from e
 
-    def get_repositories_with_cluster_ids(self, split: Optional[Literal["train", "test"]] = None, batch_size: int = 100) -> Iterator[GetClassificationRepositoryDto]:
+    def get_repositories_with_cluster_ids(
+        self,
+        split: Optional[Literal["train", "test"]] = None,
+        batch_size: int = 100,
+    ) -> Iterator[RepositoryWithClusterDistribution]:
         with self.Session() as session:
             # LEFT JOIN through the graph so empty repos are kept
             query = (
@@ -220,12 +219,12 @@ class RepositoryManager:
             current_repo_id: Optional[int] = None
             current_label: Optional[str] = None
             current_counts: Dict[int, int] = defaultdict(int)
-            current_ordered_functionalities: list[GetFunctionalityClusterDto] = []
+            current_ordered_functionalities: list[FunctionalityWithCluster] = []
 
             for repo_id, functionality_id, cluster_id, label in query:
                 # boundary: new repository encountered
                 if current_repo_id is not None and repo_id != current_repo_id:
-                    yield GetClassificationRepositoryDto(
+                    yield RepositoryWithClusterDistribution(
                         repository_id=current_repo_id,
                         data=dict(current_counts) if current_counts else None,
                         label=current_label,
@@ -242,7 +241,7 @@ class RepositoryManager:
                     current_counts[cluster_id] += 1
                 if functionality_id is not None:
                     current_ordered_functionalities.append(
-                        GetFunctionalityClusterDto(
+                        FunctionalityWithCluster(
                             functionality_id=int(functionality_id),
                             cluster_id=int(cluster_id) if cluster_id is not None else None,
                         )
@@ -250,7 +249,7 @@ class RepositoryManager:
 
             # emit the final group
             if current_repo_id is not None:
-                yield GetClassificationRepositoryDto(
+                yield RepositoryWithClusterDistribution(
                     repository_id=current_repo_id,
                     data=dict(current_counts) if current_counts else None,
                     label=current_label,

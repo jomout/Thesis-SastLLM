@@ -11,16 +11,6 @@ from .create_dtos import (
     CreateRepositoryDto,
     CreateSnippetDto,
 )
-from .get_dtos import (
-    GetClassificationRepositoryDto,
-    GetClusterDto,
-    GetExtendedSnippetDto,
-    GetFileDto,
-    GetFunctionalityClusterDto,
-    GetFunctionalityDto,
-    GetRepositoryDto,
-    GetSnippetDto,
-)
 from .update_dtos import (
     UpdateClusterDto,
     UpdateFileDto,
@@ -35,14 +25,6 @@ __all__ = [
     "CreateSnippetDto",
     "CreateFunctionalityDto",
     "CreateClusterDto",
-    "GetRepositoryDto",
-    "GetFileDto",
-    "GetSnippetDto",
-    "GetFunctionalityDto",
-    "GetClusterDto",
-    "GetExtendedSnippetDto",
-    "GetFunctionalityClusterDto",
-    "GetClassificationRepositoryDto",
     "UpdateRepositoryDto",
     "UpdateFileDto",
     "UpdateSnippetDto",

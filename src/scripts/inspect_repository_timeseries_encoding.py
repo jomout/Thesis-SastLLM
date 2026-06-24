@@ -26,7 +26,7 @@ def main() -> None:
     num_clusters = load_num_clusters(args.config, args.mode, args.num_clusters)
     labels = load_labels()
     inspection = load_repository_inspection(repository_id=args.repository_id, repository_name=args.repository_name)
-    dto = inspection.to_classification_dto()
+    repository = inspection.to_classification_entity()
 
     print_repository_tree(inspection, max_description_chars=args.max_description_chars)
     print()
@@ -41,7 +41,7 @@ def main() -> None:
         max_sequence_length=args.max_sequence_length,
         truncation=args.truncation,
     )
-    encoding = encoder.encode([dto])
+    encoding = encoder.encode([repository])
     matrix = encoding.features[0]
     sequence_length = int(encoding.sequence_lengths[0]) if encoding.sequence_lengths is not None else matrix.shape[0]
     ordered = sorted(
@@ -60,10 +60,7 @@ def main() -> None:
         row = matrix[step]
         active_columns = row.nonzero()[0].tolist()
         active = active_columns[0] if active_columns else None
-        print(
-            f"  t={step} functionality_id={functionality.functionality_id} "
-            f"lines={functionality.start_line}-{functionality.end_line} cluster_id={functionality.cluster_id} active_column={active}"
-        )
+        print(f"  t={step} functionality_id={functionality.functionality_id} lines={functionality.start_line}-{functionality.end_line} cluster_id={functionality.cluster_id} active_column={active}")
         if args.show_full_vector:
             print(f"    row={format_vector(row.tolist())}")
 

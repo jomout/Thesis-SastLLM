@@ -107,7 +107,7 @@ The query:
 - optionally filters by `repositories.split`
 - counts functionality cluster ids per repository
 
-The resulting DTO shape is:
+The resulting `RepositoryWithClusterDistribution` entity shape is:
 
 ```text
 repository_id

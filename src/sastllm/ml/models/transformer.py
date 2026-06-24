@@ -66,7 +66,7 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
             dropout=dropout,
             activation="gelu",
             batch_first=True,
-            norm_first=False,
+            norm_first=False,  # Set this to true
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.output_norm = nn.LayerNorm(embedding_dim)
