@@ -1,16 +1,15 @@
 import json
 import math
-import os
 from itertools import islice
 from pathlib import Path
 from string import Template
 from typing import Any, Iterator, List, Tuple
 
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 
 from sastllm.configs import get_logger
 from sastllm.db import SnippetManager
-from sastllm.dtos import GetExtendedSnippetDto
+from sastllm.entities import SnippetWithFileAndRepository
 from sastllm.parsers import TreeSitterGenerator
 from sastllm.prompt import FunctionalityPromptGenerator
 
@@ -67,7 +66,7 @@ class BatchFilesGenerator:
 
         logger.debug("SnippetProcessor initialized.")
 
-    def create_snippets_batch(self, code_snippets: List[GetExtendedSnippetDto]) -> str:
+    def create_snippets_batch(self, code_snippets: List[SnippetWithFileAndRepository]) -> str:
         logger.debug(f"Creating snippet batch for {len(code_snippets)} code snippets.")
 
         # Generate Prompt
@@ -102,7 +101,7 @@ class BatchFilesGenerator:
 
             # Once we reach api_batch_size, write a new jsonl file
             if prompt_count >= self.api_batch_size:
-                file_name = os.path.join(output_dir, f"api_batch_{current_api_batch_index}.jsonl")
+                file_name = output_directory / f"api_batch_{current_api_batch_index}.jsonl"
                 self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
                 with open(f"snippet_prompts_debug_{current_api_batch_index}.txt", "a", encoding="utf-8") as debug_f:
                     for sp in current_snippet_prompts:
@@ -120,11 +119,11 @@ class BatchFilesGenerator:
             self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
             print(f"Wrote final {file_name} with {prompt_count} prompts.")
 
-    def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[GetExtendedSnippetDto]], int]:
+    def _fetch_snippets_into_batches(self) -> Tuple[Iterator[List[SnippetWithFileAndRepository]], int]:
         """
         Fetches code snippets from the database and organizes them into batches.
         Returns:
-            Tuple[Iterator[List[GetExtendedSnippetDto]], int]: An iterator over batches of code snippets and the total number of batches.
+            An iterator over batches of snippet entities and the total number of batches.
         """
         # Fetch all unprocessed code snippets with file metadata
         snippets = self.snippet_db.get_snippets_with_file_meta(batch_size=self.snippet_batch_size)

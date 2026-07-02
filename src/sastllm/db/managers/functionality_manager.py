@@ -1,11 +1,12 @@
-from typing import Iterator, List, Optional, Tuple, cast
+from typing import Any, Iterator, List, Optional, Tuple, cast
 
 from sqlalchemy import inspect as sa_inspect
 
 from sastllm.configs import get_logger
 from sastllm.db.db import SessionLocal
 from sastllm.db.models import FileModel, FunctionalityModel, SnippetModel
-from sastllm.dtos import CreateFunctionalityDto, GetFunctionalityDto, UpdateFunctionalityDto
+from sastllm.dtos import CreateFunctionalityDto, UpdateFunctionalityDto
+from sastllm.entities import Functionality
 
 logger = get_logger(__name__)
 
@@ -97,7 +98,7 @@ class FunctionalityManager:
             logger.error(f"Failed bulk add functionalities: {e}")
             raise RuntimeError(f"Failed to add bulk functionalities: {e}") from e
 
-    def get_functionalities(self, batch_size: int = 100) -> Iterator[GetFunctionalityDto]:
+    def get_functionalities(self, batch_size: int = 100) -> Iterator[Functionality]:
         """
         Lazily fetches all functionality records from the database and yields them as dataclass instances.
 
@@ -105,13 +106,13 @@ class FunctionalityManager:
             batch_size (int): Number of rows fetched per batch from the database.
 
         Yields:
-            GetFunctionalityDto: A GetFunctionalityDto instance for each functionality.
+            Functionality: A functionality entity for each database row.
         """
         logger.debug("Fetching functionalities from database.")
         with self.Session() as session:
             query = session.query(FunctionalityModel).yield_per(batch_size)
             for f in query:
-                yield GetFunctionalityDto(
+                yield Functionality(
                     functionality_id=cast(int, f.functionality_id),
                     snippet_id=cast(int, f.snippet_id),
                     description=str(f.description),
@@ -119,7 +120,7 @@ class FunctionalityManager:
                     cluster_id=cast(Optional[int], f.cluster_id),
                 )
 
-    def get_all_functionalities(self, batch_size: int = 1000) -> Iterator[Tuple[int, GetFunctionalityDto]]:
+    def get_all_functionalities(self, batch_size: int = 1000) -> Iterator[Tuple[int, Functionality]]:
         """
         Streams ALL functionalities with repository_id resolved via joins.
 
@@ -127,7 +128,7 @@ class FunctionalityManager:
             get_functionalities_by_repository (N+1 killer)
 
         Yields:
-            GetFunctionalityDto with repository_id attached
+            Repository id paired with its functionality entity.
         """
         logger.debug("Fetching ALL functionalities with repository_id (bulk)")
 
@@ -147,7 +148,7 @@ class FunctionalityManager:
             )
 
             for f_id, s_id, desc, tag, cluster_id, repo_id in query:
-                dto = GetFunctionalityDto(
+                functionality = Functionality(
                     functionality_id=cast(int, f_id),
                     snippet_id=cast(int, s_id),
                     description=str(desc),
@@ -155,9 +156,9 @@ class FunctionalityManager:
                     cluster_id=cast(Optional[int], cluster_id),
                 )
 
-                yield (repo_id, dto)
+                yield (repo_id, functionality)
 
-    def get_functionality(self, functionality_id: int) -> Optional[GetFunctionalityDto]:
+    def get_functionality(self, functionality_id: int) -> Optional[Functionality]:
         """
         Fetches a functionality record from the database identified by ID.
 
@@ -165,14 +166,14 @@ class FunctionalityManager:
             functionality_id (int): The ID of a functionality record.
 
         Returns:
-            Optional[GetFunctionalityDto]: A GetFunctionalityDto object with the corresponding ID.
+            The functionality entity with the corresponding ID, or None.
         """
         logger.debug(f"Fetching functionality with ID: {functionality_id}")
         with self.Session() as session:
             f = session.query(FunctionalityModel).filter_by(functionality_id=functionality_id).one_or_none()
             if f is None:
                 return None
-            return GetFunctionalityDto(
+            return Functionality(
                 functionality_id=cast(int, f.functionality_id),
                 snippet_id=cast(int, f.snippet_id),
                 description=str(f.description),
@@ -203,7 +204,7 @@ class FunctionalityManager:
             functionality (UpdateFunctionalityDto): The functionality data transfer object containing the ID and fields to update.
         """
         logger.debug(f"Updating functionality with ID: {functionality.functionality_id}")
-        fields = {}
+        fields: dict[Any, Any] = {}
         if functionality.snippet_id is not None:
             fields[FunctionalityModel.snippet_id] = functionality.snippet_id
         if functionality.description is not None:
@@ -256,7 +257,7 @@ class FunctionalityManager:
             logger.error(f"Failed bulk update functionalities: {e}")
             raise RuntimeError(f"Failed to bulk update functionalities: {e}") from e
 
-    def get_functionalities_by_repository(self, repository_id: int, batch_size: int = 100) -> Iterator[GetFunctionalityDto]:
+    def get_functionalities_by_repository(self, repository_id: int, batch_size: int = 100) -> Iterator[Functionality]:
         """
         Lazily fetches all functionality records associated with a specific repository.
 
@@ -265,7 +266,7 @@ class FunctionalityManager:
             batch_size (int): Number of rows fetched per batch from the database.
 
         Yields:
-            GetFunctionalityDto: A GetFunctionalityDto instance for each functionality.
+            Functionality: A functionality entity for each matching database row.
         """
         logger.debug(f"Fetching functionalities for repository ID: {repository_id}")
 
@@ -278,7 +279,7 @@ class FunctionalityManager:
             )
 
             for f in query.yield_per(batch_size):
-                yield GetFunctionalityDto(
+                yield Functionality(
                     functionality_id=cast(int, f.functionality_id),
                     snippet_id=cast(int, f.snippet_id),
                     description=str(f.description),

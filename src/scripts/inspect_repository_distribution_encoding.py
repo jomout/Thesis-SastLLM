@@ -25,16 +25,16 @@ def main() -> None:
     num_clusters = load_num_clusters(args.config, args.mode, args.num_clusters)
     labels = load_labels()
     inspection = load_repository_inspection(repository_id=args.repository_id, repository_name=args.repository_name)
-    dto = inspection.to_classification_dto()
+    repository = inspection.to_classification_entity()
 
     print_repository_tree(inspection, max_description_chars=args.max_description_chars)
     print()
     print("ClusterDistributionEncoder")
     print(f"num_clusters={num_clusters}")
-    print(f"raw_cluster_counts={dto.data or {}}")
+    print(f"raw_cluster_counts={repository.data or {}}")
 
     encoder = ClusterDistributionEncoder(num_clusters=num_clusters, labels=labels, matrix_normalization=False)
-    encoding = encoder.encode([dto])
+    encoding = encoder.encode([repository])
     vector = encoding.features[0]
     print(f"feature_shape={tuple(encoding.features.shape)}")
     print("nonzero_features:")

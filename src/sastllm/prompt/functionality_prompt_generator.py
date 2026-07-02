@@ -4,7 +4,7 @@ from typing import Dict, List
 from tree_sitter import Node, Tree
 
 from sastllm.configs import get_logger
-from sastllm.dtos.get_dtos import GetExtendedSnippetDto
+from sastllm.entities import SnippetWithFileAndRepository
 from sastllm.parsers import TreeSitterGenerator
 
 logger = get_logger(__name__)
@@ -138,13 +138,13 @@ class FunctionalityPromptGenerator:
 
         return formatted
 
-    def generate_prompt(self, code_snippets: List[GetExtendedSnippetDto]) -> str:
+    def generate_prompt(self, code_snippets: List[SnippetWithFileAndRepository]) -> str:
         """
-        Processes a list of GetExtendedSnippetDto objects and returns formatted,
+        Processes snippet entities with file metadata and returns formatted,
         annotated code snippets for downstream LLM analysis.
 
         Args:
-            code_snippets (List[GetExtendedSnippetDto]): List of code snippet objects with full metadata.
+            code_snippets: Snippet entities with full file and repository metadata.
 
         Returns:
             str: A formatted prompt with code snippets with context and AST insights.

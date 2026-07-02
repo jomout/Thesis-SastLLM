@@ -13,7 +13,7 @@ from sastllm.classification.encoders import LabelMapping
 from sastllm.configs import setup_logging
 from sastllm.db.db import SessionLocal
 from sastllm.db.models import FileModel, FunctionalityModel, RepositoryModel, SnippetModel
-from sastllm.dtos import GetClassificationRepositoryDto, GetFunctionalityClusterDto
+from sastllm.entities import FunctionalityWithCluster, RepositoryWithClusterDistribution
 
 
 @dataclass(frozen=True)
@@ -54,19 +54,19 @@ class RepositoryInspection:
     files: dict[int, FileInspection] = field(default_factory=dict)
     functionalities: list[FunctionalityInspection] = field(default_factory=list)
 
-    def to_classification_dto(self) -> GetClassificationRepositoryDto:
+    def to_classification_entity(self) -> RepositoryWithClusterDistribution:
         counts: dict[int, int] = defaultdict(int)
-        ordered_functionalities: list[GetFunctionalityClusterDto] = []
+        ordered_functionalities: list[FunctionalityWithCluster] = []
         for functionality in self.functionalities:
             if functionality.cluster_id is not None:
                 counts[functionality.cluster_id] += 1
             ordered_functionalities.append(
-                GetFunctionalityClusterDto(
+                FunctionalityWithCluster(
                     functionality_id=functionality.functionality_id,
                     cluster_id=functionality.cluster_id,
                 )
             )
-        return GetClassificationRepositoryDto(
+        return RepositoryWithClusterDistribution(
             repository_id=self.repository_id,
             data=dict(counts) if counts else None,
             label=self.label,

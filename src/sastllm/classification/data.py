@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 from sastllm.configs import get_logger
 from sastllm.db import RepositoryManager
-from sastllm.dtos import GetClassificationRepositoryDto
+from sastllm.entities import RepositoryWithClusterDistribution
 from sastllm.ml import RepositoryTensorDataset
 
 from .encoders import RepositoryEncoderProtocol
@@ -122,7 +122,7 @@ class RepositoryDatasetBuilder:
         return ids, labels
 
     @staticmethod
-    def _normalize_labels(repositories: list[GetClassificationRepositoryDto]) -> list[GetClassificationRepositoryDto]:
+    def _normalize_labels(repositories: list[RepositoryWithClusterDistribution]) -> list[RepositoryWithClusterDistribution]:
         for repo in repositories:
             if repo.label != "benign":
                 repo.label = "malicious"

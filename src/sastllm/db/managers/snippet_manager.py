@@ -1,11 +1,12 @@
-from typing import Iterator, List, Optional, cast
+from typing import Any, Iterator, List, Optional, cast
 
 from sqlalchemy import func
 
 from sastllm.configs import get_logger
 from sastllm.db.db import SessionLocal
 from sastllm.db.models import FileModel, SnippetModel
-from sastllm.dtos import CreateSnippetDto, GetExtendedSnippetDto, GetSnippetDto, UpdateSnippetDto
+from sastllm.dtos import CreateSnippetDto, UpdateSnippetDto
+from sastllm.entities import Snippet, SnippetWithFileAndRepository
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,7 @@ class SnippetManager:
             logger.error(f"Failed to add bulk snippets: {e}")
             raise RuntimeError(f"Failed to add bulk snippets: {e}") from e
 
-    def get_snippets(self, batch_size: int = 100) -> Iterator[GetSnippetDto]:
+    def get_snippets(self, batch_size: int = 100) -> Iterator[Snippet]:
         """
         Lazily fetches all code snippet records from the database and yields them as dataclass instances.
 
@@ -104,13 +105,13 @@ class SnippetManager:
             batch_size (int): Number of rows fetched per batch from the database.
 
         Yields:
-            GetSnippetDto: A dataclass instance for each code snippet.
+            Snippet: A snippet entity for each database row.
         """
         logger.debug("Fetching snippets from database.")
         with self.Session() as session:
             query = session.query(SnippetModel).yield_per(batch_size)
             for s in query:
-                yield GetSnippetDto(
+                yield Snippet(
                     snippet_id=cast(int, s.snippet_id),
                     file_id=cast(int, s.file_id),
                     code=str(s.code),
@@ -119,7 +120,7 @@ class SnippetManager:
                     processed=cast(bool, s.processed),
                 )
 
-    def get_snippet(self, snippet_id: int) -> Optional[GetSnippetDto]:
+    def get_snippet(self, snippet_id: int) -> Optional[Snippet]:
         """
         Fetches a snippet record from the database identified by ID.
 
@@ -127,14 +128,14 @@ class SnippetManager:
             snippet_id (int): The ID of a snippet record.
 
         Returns:
-            Optional[GetSnippetDto]: A GetSnippetDto object with the corresponding ID.
+            The snippet entity with the corresponding ID, or None.
         """
         logger.debug(f"Fetching snippet with ID: {snippet_id}")
         with self.Session() as session:
             s = session.query(SnippetModel).filter_by(snippet_id=snippet_id).one_or_none()
             if s is None:
                 return None
-            return GetSnippetDto(
+            return Snippet(
                 snippet_id=cast(int, s.snippet_id),
                 file_id=cast(int, s.file_id),
                 code=str(s.code),
@@ -171,7 +172,7 @@ class SnippetManager:
             processed (Optional[bool]): Whether the snippet has been processed.
         """
         logger.debug(f"Updating snippet with ID: {snippet.snippet_id}")
-        fields = {}
+        fields: dict[Any, Any] = {}
         if snippet.file_id is not None:
             fields[SnippetModel.file_id] = snippet.file_id
         if snippet.code is not None:
@@ -209,7 +210,7 @@ class SnippetManager:
         try:
             with self.Session.begin() as session:
                 for snippet in snippets:
-                    fields = {}
+                    fields: dict[Any, Any] = {}
                     if snippet.file_id is not None:
                         fields[SnippetModel.file_id] = snippet.file_id
                     if snippet.code is not None:
@@ -239,7 +240,7 @@ class SnippetManager:
         with self.Session() as session:
             return session.query(func.count(SnippetModel.snippet_id)).filter(SnippetModel.processed.is_(False)).scalar()
 
-    def get_snippets_with_file_meta(self, batch_size: int = 100) -> Iterator[GetExtendedSnippetDto]:
+    def get_snippets_with_file_meta(self, batch_size: int = 100) -> Iterator[SnippetWithFileAndRepository]:
         """
         Lazily fetches all code snippets joined with their file metadata, to be processed.
 
@@ -247,8 +248,7 @@ class SnippetManager:
             batch_size (int): Number of rows fetched per batch from the database.
 
         Yields:
-            GetExtendedSnippetDto: An object containing snippet ID, code, filename,
-                                 repository, filepath, and programming language.
+            A snippet entity containing file and repository metadata.
         """
         logger.debug("Fetching code snippets with file metadata from database.")
         with self.Session() as session:
@@ -272,7 +272,7 @@ class SnippetManager:
                 .yield_per(batch_size)
             )
             for row in query:
-                yield GetExtendedSnippetDto(
+                yield SnippetWithFileAndRepository(
                     snippet_id=row.snippet_id,
                     file_id=row.file_id,
                     code=row.code,

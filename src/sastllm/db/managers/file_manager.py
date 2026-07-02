@@ -1,9 +1,10 @@
-from typing import Iterator, Optional, cast
+from typing import Any, Iterator, Optional, cast
 
 from sastllm.configs import get_logger
 from sastllm.db.db import SessionLocal
 from sastllm.db.models import FileModel
-from sastllm.dtos import CreateFileDto, GetFileDto, UpdateFileDto
+from sastllm.dtos import CreateFileDto, UpdateFileDto
+from sastllm.entities import File
 
 logger = get_logger(__name__)
 
@@ -52,7 +53,7 @@ class FileManager:
             logger.error(f"Failed to add file: {e}")
             raise RuntimeError(f"Failed to add file: {e}") from e
 
-    def get_files(self, batch_size: int = 100) -> Iterator[GetFileDto]:
+    def get_files(self, batch_size: int = 100) -> Iterator[File]:
         """
         Lazily fetches all file records from the database and yields them as dataclass instances.
 
@@ -60,17 +61,17 @@ class FileManager:
             batch_size (int): Number of rows fetched per batch from the database cursor.
 
         Yields:
-            GetFileDto: A File data transfer object for each file in the database.
+            File: A file entity for each database row.
         """
         logger.debug("Fetching files from database.")
         with self.Session() as session:
             query = session.query(FileModel).yield_per(batch_size)
             for f in query:
-                yield GetFileDto(
+                yield File(
                     file_id=cast(int, f.file_id), repository_id=cast(int, f.repository_id), language=str(f.language), filename=str(f.filename), filepath=str(f.filepath), processed=bool(f.processed)
                 )
 
-    def get_file(self, file_id: int) -> Optional[GetFileDto]:
+    def get_file(self, file_id: int) -> Optional[File]:
         """
         Fetches a file record from the database identified by ID.
 
@@ -78,14 +79,14 @@ class FileManager:
             file_id (int): The ID of a file record.
 
         Returns:
-            Optional[GetFileDto]: A GetFileDto object with the corresponding ID.
+            The file entity with the corresponding ID, or None.
         """
         logger.debug(f"Fetching file with ID: {file_id}")
         with self.Session() as session:
             f = session.query(FileModel).filter_by(file_id=file_id).one_or_none()
             if f is None:
                 return None
-            return GetFileDto(
+            return File(
                 file_id=cast(int, f.file_id), repository_id=cast(int, f.repository_id), language=str(f.language), filename=str(f.filename), filepath=str(f.filepath), processed=bool(f.processed)
             )
 
@@ -112,7 +113,7 @@ class FileManager:
             file (UpdateFileDto): The file data transfer object containing fields to update.
         """
         logger.debug(f"Updating file with ID: {file.file_id}")
-        fields = {}
+        fields: dict[Any, Any] = {}
         if file.repository_id is not None:
             fields[FileModel.repository_id] = file.repository_id
         if file.language is not None:
