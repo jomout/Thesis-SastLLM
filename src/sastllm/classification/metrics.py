@@ -17,6 +17,9 @@ def compute_classification_metrics(
     index_to_label: dict[int, str],
     probabilities: Optional[np.ndarray] = None,
 ) -> dict:
+    if len(true_indices) != len(pred_indices):
+        logger.error("Classification metric inputs have different lengths", true_labels=len(true_indices), predictions=len(pred_indices))
+        raise ValueError("true_indices and pred_indices must have the same length.")
     num_classes = len(index_to_label)
     supports = [0] * num_classes
     tp = [0] * num_classes
@@ -81,6 +84,15 @@ def compute_classification_metrics(
     if probabilities is not None and total:
         metrics.update(_auc_metrics(np.array(true_indices), probabilities, index_to_label))
 
+    logger.info(
+        "Computed classification metrics",
+        samples=total,
+        classes=num_classes,
+        accuracy=metrics["accuracy"],
+        macro_f1=metrics["macro_f1"],
+        weighted_f1=metrics["weighted_f1"],
+        probabilities_supplied=probabilities is not None,
+    )
     return metrics
 
 

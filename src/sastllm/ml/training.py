@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import Callback, EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
+
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
 
 
 class AccuracyHistoryRecord(TypedDict):
@@ -37,7 +41,7 @@ def build_trainer(
     max_epochs: int,
     monitor: str = "val_acc",
     monitor_mode: str = "max",
-    patience: int = 10,
+    patience: int = 5,
     log_dir: str = ".",
     logger_name: str = "tb_logs/repo_classifier",
     extra_callbacks: Sequence[Callback] | None = None,
@@ -58,11 +62,24 @@ def build_trainer(
     if extra_callbacks:
         callbacks.extend(extra_callbacks)
 
+    precision: Literal["16-mixed", "32-true"] = "16-mixed" if torch.cuda.is_available() else "32-true"
+    logger.info(
+        "Building Lightning trainer",
+        max_epochs=max_epochs,
+        monitor=monitor,
+        monitor_mode=monitor_mode,
+        patience=patience,
+        precision=precision,
+        accelerator="auto",
+        callback_count=len(callbacks),
+        log_dir=log_dir,
+    )
+
     return Trainer(
         max_epochs=max_epochs,
         accelerator="auto",
         devices="auto",
-        precision="16-mixed" if torch.cuda.is_available() else "32-true",
+        precision=precision,
         logger=tb_logger,
         callbacks=callbacks,
         log_every_n_steps=10,
@@ -71,12 +88,18 @@ def build_trainer(
 
 
 def best_checkpoint_path(trainer: Trainer) -> str | None:
-    return getattr(trainer.checkpoint_callback, "best_model_path", None) or None
+    path = getattr(trainer.checkpoint_callback, "best_model_path", None) or None
+    if path is None:
+        logger.warning("Trainer did not produce a best checkpoint path")
+    else:
+        logger.info("Resolved best classifier checkpoint", path=path)
+    return path
 
 
 def ensure_model_dir(path: str | Path) -> Path:
     model_dir = Path(path)
     model_dir.mkdir(parents=True, exist_ok=True)
+    logger.debug("Ensured classifier model directory", path=str(model_dir))
     return model_dir
 
 

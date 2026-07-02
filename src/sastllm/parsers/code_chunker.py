@@ -4,11 +4,14 @@ from typing import Dict, List
 
 import tiktoken
 
+from sastllm.configs import get_logger
+
 from .code_parser import CodeParser
 from .comment_stripper import CommentStripper
 from .tree_sitter_generator import TreeSitterGenerator
 
 BLOB_RE = re.compile(r"['\"]([A-Za-z0-9+/=\s]{200,})['\"]", re.MULTILINE)
+logger = get_logger(__name__)
 
 
 def scrub_long_strings(text: str) -> str:
@@ -55,6 +58,12 @@ class CodeChunker:
         self.max_tokens = max_tokens
 
         self.remove_comments = remove_comments
+        logger.debug(
+            "Initialized code chunker",
+            encoding=encoding,
+            max_tokens=max_tokens,
+            remove_comments=remove_comments,
+        )
 
     def _count_tokens(self, string: str, encoding_name: str) -> int:
         """
@@ -83,9 +92,11 @@ class CodeChunker:
         Returns:
             Dict[int, str]: A dictionary of code chunks.
         """
+        logger.debug("Starting source chunking", language=language, code_lines=len(code.splitlines()))
         try:
             breakpoints, comments = self.parser.get_lines(code=code, language=language)
         except Exception as e:
+            logger.error("Source parsing failed during chunking", language=language, error=str(e), exc_info=True)
             raise RuntimeError(f"Failed to parse code for language '{language}': {e}")
 
         # We work in zero-based indices for slicing; incoming breakpoints/comments are assumed 1-based.
@@ -177,4 +188,8 @@ class CodeChunker:
                         "end_line": end_excl,
                     }
 
+        if not chunks and code.strip():
+            logger.warning("Source chunking produced no chunks", language=language, code_lines=len(lines))
+        else:
+            logger.debug("Completed source chunking", language=language, chunks=len(chunks), code_lines=len(lines))
         return chunks

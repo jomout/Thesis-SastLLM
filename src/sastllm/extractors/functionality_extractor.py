@@ -1,6 +1,10 @@
 import re
 from typing import Dict, List, Optional
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 class FunctionalityExtractor:
     """
@@ -89,9 +93,13 @@ class FunctionalityExtractor:
             }
         """
         results = {}
-        for section in self._extract_chunk_sections(llm_text):
+        sections = self._extract_chunk_sections(llm_text)
+        if not sections:
+            logger.warning("LLM response contained no recognizable chunk sections", response_chars=len(llm_text))
+        for section in sections:
             chunk_id = self._extract_chunk_id(section)
             if not chunk_id:
+                logger.warning("Skipping functionality section without chunk id")
                 continue
 
             paragraph = self._extract_functionality(section)
@@ -99,4 +107,10 @@ class FunctionalityExtractor:
 
             results[chunk_id] = {"functionalities": functionalities}
 
+        logger.debug(
+            "Extracted structured functionalities",
+            sections=len(sections),
+            chunks=len(results),
+            functionalities=sum(len(value["functionalities"]) for value in results.values()),
+        )
         return results

@@ -106,6 +106,7 @@ log:
 
     level = _validate_level(block.get("level", "INFO"))
     file_level = _validate_level(block.get("file_level", level), field_name="file_level")
+    root_level = min((level, file_level), key=lambda name: int(getattr(logging, name)))
 
     file_path = block.get("file")
     max_bytes = int(block.get("max_bytes", 10 * 1024 * 1024))
@@ -152,7 +153,7 @@ log:
         },
         "root": {
             "handlers": handlers,
-            "level": level,
+            "level": root_level,
         },
         "loggers": {
             "urllib3": {

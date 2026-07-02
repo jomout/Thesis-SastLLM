@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sastllm.configs import get_logger
+
 from .base import RepositoryClassifierModule
 from .config import LSTMModelConfig, MLPModelConfig, RepositoryModelConfig, TransformerModelConfig
 from .lstm import LSTMRepositoryClassifier
@@ -9,6 +11,7 @@ from .mlp import MLPRepositoryClassifier
 from .transformer import TransformerRepositoryClassifier
 
 RepositoryModelClass = type[RepositoryClassifierModule]
+logger = get_logger(__name__)
 
 
 def build_model(
@@ -22,6 +25,17 @@ def build_model(
     class_counts: Optional[dict[int, int]],
     use_class_weights: bool = True,
 ) -> RepositoryClassifierModule:
+    logger.info(
+        "Building repository classifier model",
+        model=config.name,
+        input_dim=input_dim,
+        output_dim=output_dim,
+        lr=lr,
+        weight_decay=weight_decay,
+        l1_lambda=l1_lambda,
+        use_class_weights=use_class_weights,
+        class_counts=class_counts,
+    )
     if isinstance(config, MLPModelConfig):
         return MLPRepositoryClassifier(
             input_dim=input_dim,
@@ -67,6 +81,7 @@ def build_model(
             class_counts=class_counts,
             use_class_weights=use_class_weights,
         )
+    logger.error("Unsupported repository model configuration", config_type=type(config).__name__)
     raise TypeError(f"Unsupported repository model config: {type(config).__name__}.")
 
 
@@ -77,4 +92,5 @@ def model_class_for(config: RepositoryModelConfig) -> RepositoryModelClass:
         return LSTMRepositoryClassifier
     if isinstance(config, TransformerModelConfig):
         return TransformerRepositoryClassifier
+    logger.error("Unsupported repository model class lookup", config_type=type(config).__name__)
     raise TypeError(f"Unsupported repository model config: {type(config).__name__}.")

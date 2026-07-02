@@ -7,10 +7,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from sastllm.configs import get_logger
 from sastllm.ml.models.config import MLPModelConfig, RepositoryModelConfig, parse_model_config
 from scripts.utils import load_yaml
 
 ClassificationMode = Literal["search", "train", "test"]
+logger = get_logger(__name__)
 
 
 class TrainingConfig(BaseModel):
@@ -72,7 +74,7 @@ class ClassificationConfig:
         if mode == "search" and not grid_search:
             raise ValueError("'classification.search.grid_search' must define at least one parameter.")
 
-        return cls(
+        config = cls(
             save_model_dir=Path(save_dir) if save_dir else None,
             load_model_dir=Path(load_dir) if load_dir else None,
             save_plots_dir=Path(plots_dir) if plots_dir else None,
@@ -80,6 +82,23 @@ class ClassificationConfig:
             model=model,
             grid_search=grid_search if mode == "search" else None,
         )
+        logger.info(
+            "Loaded classification configuration",
+            mode=mode,
+            model=config.model.name,
+            k=config.training.k,
+            batch_size=config.training.batch_size,
+            epochs=config.training.epochs,
+            use_weighted_sampler=config.training.use_weighted_sampler,
+            use_class_weights=config.training.use_class_weights,
+        )
+        if config.training.use_weighted_sampler and config.training.use_class_weights:
+            logger.warning(
+                "Both class imbalance corrections are enabled",
+                mode=mode,
+                model=config.model.name,
+            )
+        return config
 
     def iter_search_configs(self) -> list[tuple[str, "ClassificationConfig", dict[str, Any]]]:
         if not self.grid_search:
@@ -108,6 +127,7 @@ class ClassificationConfig:
                     overrides,
                 )
             )
+        logger.info("Expanded classification search grid", runs=len(runs), parameters=keys)
         return runs
 
 

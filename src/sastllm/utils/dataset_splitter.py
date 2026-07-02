@@ -128,7 +128,7 @@ class DatasetSplitter:
                 )
 
         except Exception as e:
-            logger.error(f"Failed to embed repositories: {e}")
+            logger.error("Failed to embed repository functionalities", error=str(e), exc_info=True)
             raise RuntimeError(f"Failed to embed repositories: {e}") from e
 
     # -------------------------
@@ -174,5 +174,5 @@ class DatasetSplitter:
                 logger.info(f"Updated Qdrant for {split} set with {len(repo_ids)} repositories.")
 
         except Exception as e:
-            logger.error(f"Failed to split repositories: {e}")
+            logger.error("Failed to split repositories", error=str(e), exc_info=True)
             raise RuntimeError(f"Failed to split repositories: {e}") from e

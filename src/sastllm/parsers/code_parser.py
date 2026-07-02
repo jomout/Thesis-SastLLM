@@ -4,6 +4,10 @@ from typing import Dict, List, Tuple
 import yaml
 from tree_sitter import Node, Parser
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 class CodeParser:
     """
@@ -22,10 +26,16 @@ class CodeParser:
         # Load node type mappings from YAML
         self.IMPORTANT_NODE_TYPES = self._load_yaml_mapping("configs/important_nodes.yaml")
         self.COMMENT_NODES = self._load_yaml_mapping("configs/comment_nodes.yaml")
+        logger.debug(
+            "Initialized code parser",
+            important_node_languages=len(self.IMPORTANT_NODE_TYPES),
+            comment_node_languages=len(self.COMMENT_NODES),
+        )
 
     @staticmethod
     def _load_yaml_mapping(path: str) -> Dict[str, Dict[str, str]]:
         if not os.path.exists(path):
+            logger.error("Parser mapping configuration was not found", path=path)
             raise FileNotFoundError(f"Config not found: {path}")
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -142,4 +152,11 @@ class CodeParser:
 
             lines.append(sorted(lines_of_interest))
 
+        logger.debug(
+            "Parsed source syntax boundaries",
+            language=language,
+            code_lines=len(code.splitlines()),
+            important_lines=len(lines[0]),
+            comment_lines=len(lines[1]),
+        )
         return lines[0], lines[1]

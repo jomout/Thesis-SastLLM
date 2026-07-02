@@ -5,6 +5,7 @@ This directory contains the reference documentation for the SAST-LLM thesis proj
 ## Start here
 
 - [PIPELINE.md](./PIPELINE.md) gives the end-to-end thesis pipeline overview.
+- [09_FULL_PIPELINE_RUNBOOK.md](./09_FULL_PIPELINE_RUNBOOK.md) gives the exact command sequence and experiment checkpoints.
 - [USAGE.md](./USAGE.md) lists CLI commands and typical execution flows.
 - [SETUP.md](./SETUP.md) describes local installation, services, and environment variables.
 - [CONFIG.md](./CONFIG.md) explains the YAML configuration files.
@@ -19,6 +20,8 @@ This directory contains the reference documentation for the SAST-LLM thesis proj
 - [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)
 - [06_STORAGE_AND_DATA_ACCESS.md](./06_STORAGE_AND_DATA_ACCESS.md)
 - [07_CONFIGURATION_REFERENCE.md](./07_CONFIGURATION_REFERENCE.md)
+- [08_CLUSTERING_RESEARCH_GUIDE.md](./08_CLUSTERING_RESEARCH_GUIDE.md) provides the clustering experiment runbook and metric interpretation checklist.
+- [09_FULL_PIPELINE_RUNBOOK.md](./09_FULL_PIPELINE_RUNBOOK.md) provides the full raw-data-to-test-metrics execution guide.
 
 ## Current implementation note
 

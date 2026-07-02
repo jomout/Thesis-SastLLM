@@ -5,7 +5,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from sastllm.configs import get_logger
 from sastllm.db import EmbeddingsManager
+
+logger = get_logger(__name__)
 
 EmbeddingBatch = tuple[np.ndarray, np.ndarray]
 
@@ -40,17 +43,24 @@ class EmbeddingSource:
 
         ids: list[int] = []
         vectors: list[np.ndarray] = []
+        total = 0
+        batches = 0
 
         for record in self.records():
             ids.append(record.functionality_id)
             vectors.append(record.vector)
 
             if len(vectors) == batch_size:
+                total += len(vectors)
+                batches += 1
                 yield np.asarray(ids, dtype=np.int64), np.asarray(vectors, dtype=np.float32)
                 ids, vectors = [], []
 
         if vectors:
+            total += len(vectors)
+            batches += 1
             yield np.asarray(ids, dtype=np.int64), np.asarray(vectors, dtype=np.float32)
+        logger.debug("Completed embedding source iteration", samples=total, batches=batches, batch_size=batch_size)
 
 
 class QdrantEmbeddingRepository:

@@ -42,7 +42,7 @@ def init():
         load_dotenv()
         setup_logging()
     except Exception as e:
-        logger.error("Failed to initialize project: %s", e)
+        logger.error("Failed to initialize project", error=str(e), exc_info=True)
         raise RuntimeError(f"Failed to initialize project: {e}") from e
 
 

@@ -6,12 +6,9 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-import joblib
-import matplotlib.pyplot as plt
+import joblib  # type: ignore[import-untyped]
 import numpy as np
-from kneed import KneeLocator
-from sklearn.cluster import MiniBatchKMeans
-from tqdm import tqdm
+from sklearn.cluster import MiniBatchKMeans  # type: ignore[import-untyped]
 
 from sastllm.configs import get_logger
 
@@ -37,70 +34,29 @@ class MiniBatchKMeansClusterer:
     MODEL_KEY = "minibatch_kmeans_model"
     CLUSTERS_KEY = "n_clusters"
 
-    def __init__(self, *, random_state: int = 42, plots_dir: str | Path = "cluster_plots") -> None:
+    def __init__(self, *, random_state: int = 42) -> None:
         self.random_state = random_state
-        self.plots_dir = Path(plots_dir)
         self.kmeans: MiniBatchKMeans | None = None
         self.n_clusters: int | None = None
 
-    def find_optimal_k(
+    def fit(
         self,
         source: EmbeddingSource,
         *,
-        n: int,
+        k: int,
         batch_size: int = 1000,
-        min_samples_per_cluster: int = 20,
-        num_candidates: int = 30,
-        early_stop_patience: int = 4,
-    ) -> int:
-        if n <= 2:
-            raise ValueError("n must be greater than 2 to search for k.")
-        if min_samples_per_cluster <= 0:
-            raise ValueError("min_samples_per_cluster must be > 0.")
-
-        k_values = self._candidate_k_values(
-            n=n,
-            min_samples_per_cluster=min_samples_per_cluster,
-            num_candidates=num_candidates,
-        )
-        inertias: list[float] = []
-        stable_knee_steps = 0
-        last_knee: int | None = None
-
-        for k in tqdm(k_values, desc="Finding optimal k"):
-            try:
-                model = self._fit_new_model(source, k=k, batch_size=batch_size)
-            except ValueError as e:
-                logger.warning("Stopping k search at k=%s: %s", k, e)
-                break
-            inertias.append(float(model.inertia_))
-
-            if len(inertias) >= 3:
-                current_knee = self._locate_knee(k_values[: len(inertias)], inertias)
-                stable_knee_steps = stable_knee_steps + 1 if current_knee is not None and current_knee == last_knee else 0
-                last_knee = current_knee
-                if stable_knee_steps >= early_stop_patience:
-                    logger.info("Stopping k search early at stable knee=%s.", current_knee)
-                    break
-
-        if not inertias:
-            raise RuntimeError("Unable to fit any candidate k values during clustering search.")
-
-        optimal_k = self._locate_knee(k_values[: len(inertias)], inertias)
-        if optimal_k is None:
-            optimal_k = int(k_values[int(np.argmin(inertias))])
-            logger.warning("KneeLocator did not find an elbow; using lowest-inertia candidate k=%s.", optimal_k)
-
-        self.n_clusters = optimal_k
-        self._plot_inertia(k_values[: len(inertias)], inertias, optimal_k, n=n)
-        return optimal_k
-
-    def fit(self, source: EmbeddingSource, *, k: int, batch_size: int = 1000) -> None:
+        initialization_vectors: np.ndarray | None = None,
+    ) -> None:
         if k <= 0:
             raise ValueError("k must be > 0.")
 
         logger.info("Fitting MiniBatchKMeans", k=k, batch_size=batch_size)
-        self.kmeans = self._fit_new_model(source, k=k, batch_size=batch_size)
+        self.kmeans = self._fit_new_model(
+            source,
+            k=k,
+            batch_size=batch_size,
+            initialization_vectors=initialization_vectors,
+        )
         self.n_clusters = k
         logger.info("MiniBatchKMeans training completed", k=k)
 
@@ -163,12 +119,24 @@ class MiniBatchKMeansClusterer:
         self.n_clusters = n_clusters
         logger.info("Loaded clustering model from %s.", model_path)
 
-    def _fit_new_model(self, source: EmbeddingSource, *, k: int, batch_size: int) -> MiniBatchKMeans:
+    def _fit_new_model(
+        self,
+        source: EmbeddingSource,
+        *,
+        k: int,
+        batch_size: int,
+        initialization_vectors: np.ndarray | None = None,
+    ) -> MiniBatchKMeans:
         start = perf_counter()
         model = MiniBatchKMeans(n_clusters=k, batch_size=batch_size, random_state=self.random_state)
         warmup: list[np.ndarray] = []
         warmup_size = 0
-        initialized = False
+        initialized = initialization_vectors is not None
+        if initialization_vectors is not None:
+            if initialization_vectors.ndim != 2 or len(initialization_vectors) < k:
+                raise ValueError(f"Initialization vectors must have shape (N, D) with N >= k={k}.")
+            model.fit(initialization_vectors)
+            logger.debug("Initialized MiniBatchKMeans from seeded reservoir", initialization_samples=len(initialization_vectors), k=k)
         batches = 0
         samples = 0
         vector_dim: int | None = None
@@ -205,30 +173,3 @@ class MiniBatchKMeansClusterer:
             elapsed_seconds=round(perf_counter() - start, 3),
         )
         return model
-
-    @staticmethod
-    def _candidate_k_values(*, n: int, min_samples_per_cluster: int, num_candidates: int) -> np.ndarray:
-        k_max = max(2, n // min_samples_per_cluster)
-        if k_max < 2:
-            raise ValueError("Not enough samples to search for k.")
-        if k_max == 2:
-            return np.array([2], dtype=np.int64)
-        return np.unique(np.logspace(np.log10(2), np.log10(k_max), num=num_candidates).astype(np.int64))
-
-    @staticmethod
-    def _locate_knee(k_values: np.ndarray, inertias: list[float]) -> int | None:
-        if len(k_values) < 3 or len(inertias) < 3:
-            return None
-        knee = KneeLocator(k_values, inertias, curve="convex", direction="decreasing").knee
-        return int(knee) if knee is not None else None
-
-    def _plot_inertia(self, k_values: np.ndarray, inertias: list[float], elbow: int, *, n: int) -> None:
-        self.plots_dir.mkdir(parents=True, exist_ok=True)
-        plt.figure()
-        plt.plot(k_values, inertias, marker="o", label="Inertia")
-        plt.vlines(elbow, plt.ylim()[0], plt.ylim()[1], linestyles="dashed", label="Selected k")
-        plt.xlabel("k")
-        plt.ylabel("Inertia")
-        plt.legend()
-        plt.savefig(self.plots_dir / f"n_{n}_k_{elbow}.png")
-        plt.close()

@@ -5,6 +5,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from tree_sitter import Node, Parser
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class StripOptions:
@@ -49,6 +53,7 @@ class CommentStripper:
         :param options: StripOptions controlling preservation of shebang/license header.
         """
         if not language:
+            logger.error("Comment stripping requires an explicit language", filename=filename)
             raise ValueError(f"Unable to infer language from filename '{filename}'.")
 
         options = options or StripOptions()
@@ -91,7 +96,15 @@ class CommentStripper:
         for start, end in reversed(delete_spans):
             del mutable[start:end]
 
-        return mutable.decode("utf-8")
+        result = mutable.decode("utf-8")
+        logger.debug(
+            "Stripped source comments",
+            language=language,
+            removed_spans=len(delete_spans),
+            input_bytes=len(code.encode("utf-8")),
+            output_bytes=len(mutable),
+        )
+        return result
 
     # ------------------------ internals ------------------------
 
@@ -102,8 +115,10 @@ class CommentStripper:
         try:
             parser = self._ts_generator.get_parser(language=lang_key)
         except Exception as e:
+            logger.error("Unable to create comment parser", language=language, error=str(e), exc_info=True)
             raise ValueError(f"Unsupported or unknown language '{language}'. Ensure it exists in configs/languages.yaml. Original error: {e}")
         self._parser_cache[lang_key] = parser
+        logger.debug("Cached comment parser", language=lang_key)
         return parser
 
     def _walk_comment_nodes(self, node: Node) -> Iterable[Node]:

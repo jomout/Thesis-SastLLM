@@ -63,12 +63,25 @@ class RepositoryDataModule(LightningDataModule):
         self.train_ds = torch.utils.data.Subset(self.dataset, self.train_indices)
         self.val_ds = torch.utils.data.Subset(self.dataset, self.val_indices)
         self.test_ds = torch.utils.data.Subset(self.dataset, self.test_indices)
-        logger.info("Train dataset size: %s", len(self.train_ds))
-        logger.info("Validation dataset size: %s", len(self.val_ds))
-        logger.info("Test dataset size: %s", len(self.test_ds))
+        logger.info(
+            "Prepared repository data module",
+            stage=stage,
+            train_samples=len(self.train_ds),
+            validation_samples=len(self.val_ds),
+            test_samples=len(self.test_ds),
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
 
     def train_dataloader(self) -> DataLoader:
         sampler = make_weighted_sampler(self.train_ds, num_classes=self.num_classes) if self.use_weighted_sampler and len(self.train_ds) else None
+        logger.debug(
+            "Building training data loader",
+            weighted_sampler=sampler is not None,
+            samples=len(self.train_ds),
+            batch_size=self.batch_size,
+        )
         return DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -118,4 +131,10 @@ def make_weighted_sampler(dataset, *, num_classes: int) -> WeightedRandomSampler
     class_weights = 1.0 / (class_counts + 1e-6)
     sample_weights = class_weights[labels]
     sample_weights = sample_weights / sample_weights.sum() * len(sample_weights)
+    logger.info(
+        "Built weighted repository sampler",
+        samples=len(labels),
+        class_counts=class_counts.tolist(),
+        class_weights=class_weights.tolist(),
+    )
     return WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)

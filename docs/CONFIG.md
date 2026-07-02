@@ -26,6 +26,28 @@ paths:
   dataset: ".dataset/thesis_dataset"
 ```
 
+Logging:
+
+```yaml
+log:
+  level: INFO
+  file: logs/sastllm.log
+  file_level: DEBUG
+  max_bytes: 10485760
+  backup_count: 5
+```
+
+Console logs use `log.level`. The rotating JSON-lines file uses `log.file_level`, so the default setup keeps normal console output readable while retaining detailed debugging context in `logs/sastllm.log`.
+
+Log-level intent:
+
+| Level | Content |
+| --- | --- |
+| `DEBUG` | batch iteration, paths, shapes, parser details, and configuration loading |
+| `INFO` | pipeline lifecycle, model construction, data counts, metrics, and persisted artifacts |
+| `WARNING` | recoverable anomalies such as truncation, empty sequences, unreliable silhouette, or class-imbalance overcorrection |
+| `ERROR` | failed I/O, invalid operational state, unsupported configuration, and exceptions at pipeline boundaries |
+
 LLM:
 
 ```yaml
@@ -50,6 +72,14 @@ Clustering:
 
 ```yaml
 clustering:
+  evaluation:
+    sample_size: 100000
+    silhouette_sample_size: 5000
+    silhouette_samples_per_cluster: 5
+    silhouette_metric: "euclidean"
+    random_state: 42
+    elbow_window_factor: 2.0
+    max_silhouette_singleton_fraction: 0.5
   train:
     k: 10661
   test:
@@ -119,7 +149,10 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 ## Important notes
 
 - Only `snippet_processor` is currently supported by the LLM factory.
+- Exceptions logged at pipeline and external-service boundaries include traceback context in the rotating JSON log.
 - The Qdrant collection name is derived from `split.model_name` by replacing `/` with `_`.
+- Clustering search validates candidate K values with normalized inertia, cohesion, separation, Calinski-Harabasz, sampled silhouette, and cluster-size health.
+- Full silhouette is not computed for the complete embedding population; `clustering.evaluation` controls a seeded reservoir and cluster-stratified silhouette sample, and records reliability metadata.
 - The classifier `k` should match the clustering `k`.
 - `classification.yaml` may use `l1_param`; the classification config maps it to `l1_lambda`.
 - `use_weighted_sampler` controls training-batch rebalancing.
