@@ -54,6 +54,7 @@ class RepositoryClassificationService:
         logger.info(
             "Initializing repository classification service",
             model=config.model.name,
+            input_encoding=getattr(config.model, "input_encoding", None),
             encoder=self.encoder.__class__.__name__,
             k=config.training.k,
             batch_size=config.training.batch_size,
@@ -230,7 +231,7 @@ class RepositoryClassificationService:
             raise RuntimeError("Classification dataset bundle has not been built.")
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
-        class_counts = dict(zip(*np.unique(labels, return_counts=True)))
+        class_counts = _class_counts(labels)
         model = build_model(
             config=self.config.model,
             input_dim=self._model_input_dim(),
@@ -245,10 +246,11 @@ class RepositoryClassificationService:
         logger.info(
             "Built repository classifier model",
             model=self.config.model.name,
+            input_encoding=getattr(self.config.model, "input_encoding", None),
             input_dim=self._model_input_dim(),
             feature_shape=tuple(self.bundle.dataset.X.shape),
             output_dim=len(self.labels.index_to_label),
-            class_counts={int(k): int(v) for k, v in class_counts.items()},
+            class_counts=class_counts,
             use_class_weights=self.config.training.use_class_weights,
             use_weighted_sampler=self.config.training.use_weighted_sampler,
             total_parameters=total_parameters,
@@ -264,7 +266,7 @@ class RepositoryClassificationService:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
-        class_counts = dict(zip(*np.unique(labels, return_counts=True)))
+        class_counts = _class_counts(labels)
         model_class = self._model_class()
         model = model_class.load_from_checkpoint(str(checkpoint), class_counts=class_counts)
         model.eval()
@@ -282,12 +284,18 @@ class RepositoryClassificationService:
         return model_class_for(self.config.model)
 
     def _default_encoder(self) -> RepositoryEncoderProtocol:
-        if isinstance(self.config.model, (LSTMModelConfig, TransformerModelConfig)):
+        if isinstance(self.config.model, LSTMModelConfig) or (isinstance(self.config.model, TransformerModelConfig) and self.config.model.input_encoding == "ordered_tokens"):
             return OrderedFunctionalityTokenSequenceEncoder(
                 num_clusters=self.config.training.k,
                 labels=self.labels,
                 max_sequence_length=self.config.model.max_sequence_length,
                 truncation=self.config.model.truncation,
+            )
+        if isinstance(self.config.model, TransformerModelConfig):
+            return ClusterDistributionEncoder(
+                num_clusters=self.config.training.k,
+                labels=self.labels,
+                matrix_normalization=False,
             )
         return ClusterDistributionEncoder(num_clusters=self.config.training.k, labels=self.labels)
 
@@ -349,6 +357,11 @@ def _timestamp() -> str:
 def _compact_metrics(metrics: dict) -> dict[str, float]:
     keys = ("accuracy", "macro_f1", "weighted_f1", "auc_macro", "auc_weighted")
     return {key: float(metrics[key]) for key in keys if key in metrics}
+
+
+def _class_counts(labels: np.ndarray) -> dict[int, int]:
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    return {int(label): int(count) for label, count in zip(unique_labels, counts)}
 
 
 def _plot_accuracy_history(records: list[AccuracyHistoryRecord], path: Path, *, title: str) -> None:

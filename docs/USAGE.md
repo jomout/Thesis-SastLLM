@@ -115,7 +115,7 @@ Modes:
 
 Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)
 
-Classifier architectures are defined under the top-level `models` registry and selected through `classification.<mode>.model`: `mlp`, `lstm`, or `transformer`. The Transformer uses ordered cluster-token sequences. A practical starting profile is `embedding_dim: 128`, `num_heads: 4`, `num_layers: 2`, `feedforward_dim: 256`, `pooling: "mean"`, and `max_sequence_length: 256`.
+Classifier architectures are defined under the top-level `models` registry and selected through `classification.<mode>.model`: `mlp`, `lstm`, or `transformer`. Set `models.transformer.input_encoding` to `"ordered_tokens"` for order-aware functionality sequences or `"cluster_distribution"` for aggregate cluster-frequency attention. A practical starting profile is `embedding_dim: 128`, `num_heads: 4`, `num_layers: 2`, `feedforward_dim: 256`, `pooling: "mean"`, and `max_sequence_length: 256`.
 
 ### Repository encoding inspection
 

@@ -55,6 +55,7 @@ models:
     max_sequence_length: 512
     truncation: "first"
   transformer:
+    input_encoding: "cluster_distribution"
     embedding_dim: 128
     num_layers: 2
     num_heads: 4
@@ -172,7 +173,7 @@ This representation preserves functionality order and is suitable for sequence o
 
 For large `k`, this one-hot representation can be too large for model training. With `12278` repositories, `512` timesteps, and `10661` clusters, a dense float32 one-hot tensor would require about `250 GiB`.
 
-`OrderedFunctionalityTokenSequenceEncoder` is the memory-efficient alternative used by the LSTM and Transformer paths. It keeps the same ordering, but stores one integer token per timestep:
+`OrderedFunctionalityTokenSequenceEncoder` is the memory-efficient alternative used by the LSTM and by the Transformer's `ordered_tokens` mode. It keeps the same ordering, but stores one integer token per timestep:
 
 ```text
 shape = [repositories, timesteps]
@@ -195,7 +196,7 @@ Architecture profiles are strict and model-specific:
 
 - `models.mlp` accepts only MLP architecture fields
 - `models.lstm` accepts only LSTM and sequence-encoding fields
-- `models.transformer` accepts only Transformer and sequence-encoding fields
+- `models.transformer` accepts Transformer fields and an `input_encoding` choice
 
 Unknown or misplaced model fields fail during configuration loading instead of being silently ignored. Learning rate, batch size, class balancing, and other experiment/runtime settings remain under `classification.<mode>.params` because they are not architecture definitions.
 
@@ -205,20 +206,23 @@ Supported model names:
 | --- | --- | --- |
 | `mlp` | `ClusterDistributionEncoder`, shape `[repositories, k]` | `src/sastllm/ml/models/mlp.py` |
 | `lstm` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/lstm.py` |
-| `transformer` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/transformer.py` |
+| `transformer` with `ordered_tokens` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/transformer.py` |
+| `transformer` with `cluster_distribution` | `ClusterDistributionEncoder`, shape `[repositories, k]` | `src/sastllm/ml/models/transformer.py` |
 
-When the selected profile is `lstm` or `transformer`, `RepositoryClassificationService` automatically uses the ordered token-sequence encoder unless an encoder is injected explicitly.
+`RepositoryClassificationService` automatically chooses the encoder from the model profile unless an encoder is injected explicitly. LSTM always uses ordered tokens. Transformer uses the encoder selected by `models.transformer.input_encoding`.
 
-### Transformer input decision
+### Transformer input modes
 
-The Transformer uses ordered cluster-token sequences rather than cluster distributions:
+The Transformer supports two explicit input representations:
 
-- token sequences preserve functionality order, which self-attention and positional embeddings can model
-- integer tokens avoid the memory cost of one-hot vectors
-- padding token `0` gives the model a reliable attention mask
-- cluster distributions remain the simpler, stronger baseline for the MLP when order is not required
+- `input_encoding: "ordered_tokens"` preserves functionality order. It uses integer cluster tokens, learned positional embeddings, and padding masks.
+- `input_encoding: "cluster_distribution"` ignores functionality order and operates on aggregate cluster frequencies. Each attended element combines a learned cluster-identity embedding with its normalized frequency.
 
-A hybrid distribution-plus-token model may be useful later, but it is intentionally not part of this baseline. It would require a multi-input dataset contract and a fusion architecture, making it harder to determine whether improvements come from attention or from simply reintroducing aggregate frequency features.
+A complete distribution may contain more than ten thousand columns, so distribution mode does not run self-attention over every column. It selects up to `max_sequence_length` of the most frequent nonzero clusters per repository. Zero-frequency clusters are masked. This bounds the quadratic attention cost while preserving the strongest components of the distribution.
+
+Distribution mode uses no positional embeddings because cluster identities, rather than positions, distinguish its elements. Use `pooling: "mean"` or `pooling: "max"`; `pooling: "last"` is rejected because a distribution has no meaningful final element.
+
+These modes answer different research questions. Ordered tokens test whether functionality order is predictive. Cluster distributions test whether global functionality composition is predictive. The MLP remains the simpler distribution baseline and should be compared against the distribution Transformer to determine whether attention among active clusters adds value.
 
 Example LSTM profile and selection:
 
@@ -253,6 +257,7 @@ Example Transformer profile and selection:
 ```yaml
 models:
   transformer:
+    input_encoding: "ordered_tokens"
     embedding_dim: 128
     num_layers: 2
     num_heads: 4
@@ -271,9 +276,27 @@ classification:
       use_class_weights: false
 ```
 
-The Transformer adds learned positional embeddings and masks padding tokens during self-attention. `embedding_dim` must be divisible by `num_heads`. `pooling: "mean"` is the recommended baseline because it summarizes all non-padding functionality states.
+With `ordered_tokens`, the Transformer adds learned positional embeddings and masks padding tokens during self-attention. `embedding_dim` must be divisible by `num_heads`. `pooling: "mean"` is the recommended baseline because it summarizes all non-padding functionality states.
 
 Self-attention cost grows approximately with the square of sequence length. Start with `max_sequence_length: 256` and a smaller batch size, then increase only after checking memory and runtime.
+
+To train from cluster distributions instead, change only the model profile:
+
+```yaml
+models:
+  transformer:
+    input_encoding: "cluster_distribution"
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"  # used only by ordered_tokens
+```
+
+In this mode, `max_sequence_length: 256` means at most 256 nonzero cluster-frequency tokens are passed to attention for each repository. `ClusterDistributionEncoder` already normalizes each repository by its functionality count; the service disables the additional dataset-wide matrix normalization for this path.
 
 For testing, set `classification.test.model` to `transformer` and point `load_model_dir` to the trained Transformer directory. Selecting the same shared profile ensures the test encoder uses the training sequence length and truncation policy. Model architecture parameters are also restored from the checkpoint.
 

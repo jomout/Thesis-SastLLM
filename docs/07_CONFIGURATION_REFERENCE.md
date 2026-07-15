@@ -144,6 +144,7 @@ models:
     max_sequence_length: 512
     truncation: "first"
   transformer:
+    input_encoding: "cluster_distribution"
     embedding_dim: 128
     num_layers: 2
     num_heads: 4
@@ -187,6 +188,8 @@ Used by:
 Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 
 Model architecture fields live in strict reusable profiles under `models`. Each classification mode selects one profile by name. Optimization and data-loading fields remain under the mode's `params` mapping.
+
+For `models.transformer.input_encoding`, use `"ordered_tokens"` to preserve functionality order or `"cluster_distribution"` to attend over aggregate cluster frequencies. In distribution mode, `max_sequence_length` limits the most frequent nonzero clusters included per repository and `pooling` must be `"mean"` or `"max"`.
 
 ## `languages.yaml`
 
