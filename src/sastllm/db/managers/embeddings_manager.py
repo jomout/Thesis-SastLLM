@@ -5,7 +5,7 @@ import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from sastllm.configs import get_logger
+from sastllm.configs import get_logger, settings
 
 logging.getLogger("qdrant_client.http").setLevel(logging.WARNING)
 logging.getLogger("qdrant_client").setLevel(logging.WARNING)
@@ -19,10 +19,37 @@ class EmbeddingsManager:
     Manages the storage and retrieval of embeddings using Qdrant.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 6333, grpc_port: int = 6334):
-        self.rest = QdrantClient(host=host, port=port, prefer_grpc=False, timeout=100000)
-        self.grpc = QdrantClient(host=host, grpc_port=grpc_port, prefer_grpc=True, timeout=100000)
-        logger.debug("Initialized Qdrant embedding manager", host=host, rest_port=port, grpc_port=grpc_port)
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        grpc_port: int | None = None,
+        timeout: int | None = None,
+    ):
+        resolved_host = host or settings.qdrant_host
+        resolved_port = port or settings.qdrant_port
+        resolved_grpc_port = grpc_port or settings.qdrant_grpc_port
+        resolved_timeout = timeout or settings.qdrant_timeout
+
+        self.rest = QdrantClient(
+            host=resolved_host,
+            port=resolved_port,
+            prefer_grpc=False,
+            timeout=resolved_timeout,
+        )
+        self.grpc = QdrantClient(
+            host=resolved_host,
+            grpc_port=resolved_grpc_port,
+            prefer_grpc=True,
+            timeout=resolved_timeout,
+        )
+        logger.debug(
+            "Initialized Qdrant embedding manager",
+            host=resolved_host,
+            rest_port=resolved_port,
+            grpc_port=resolved_grpc_port,
+            timeout=resolved_timeout,
+        )
 
     def insert_embeddings(
         self,
