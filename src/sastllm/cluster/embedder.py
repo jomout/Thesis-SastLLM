@@ -24,7 +24,7 @@ class Embedder:
         try:
             self.model = SentenceTransformer(model_name)
         except Exception as e:
-            logger.error(f"Failed to initialize Embedder model {model_name}: {e}")
+            logger.error("Failed to initialize embedding model", model=model_name, error=str(e), exc_info=True)
             raise ValueError(f"Failed to initialize Embedder model {model_name}: {e}") from e
 
         # Qdrant setup
@@ -52,6 +52,8 @@ class Embedder:
             np.ndarray: Embedding matrix (n_samples, embedding_dim).
         """
         logger.debug(f"Generating embeddings for {len(func_ids_tags)} texts")
+        if not func_ids_tags:
+            logger.warning("Embedding request contained no functionality tags")
 
         # Determine which IDs need to be computed
         missing = [(i, t) for i, t in func_ids_tags if i not in self.cached_ids]
@@ -82,5 +84,11 @@ class Embedder:
                 embeddings.append(computed[i])
 
         embeddings = np.stack(embeddings, axis=0)
-        logger.debug(f"Generated embeddings for {len(embeddings)} texts.")
+        logger.info(
+            "Generated functionality embeddings",
+            requested=len(func_ids_tags),
+            computed=len(missing),
+            cached=len(func_ids_tags) - len(missing),
+            vector_dim=int(embeddings.shape[1]),
+        )
         return embeddings

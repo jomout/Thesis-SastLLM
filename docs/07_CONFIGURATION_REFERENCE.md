@@ -16,8 +16,10 @@ app:
 
 log:
   level: INFO
-  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
   file: logs/sastllm.log
+  file_level: DEBUG
+  max_bytes: 10485760
+  backup_count: 5
 
 paths:
   dataset: ".dataset/thesis_dataset"
@@ -27,6 +29,8 @@ Used by:
 
 - logging setup
 - `sastllm load`
+
+`level` controls the structured console threshold. `file_level` controls the rotating JSON-lines file independently. `max_bytes` and `backup_count` bound retained log volume. Use `INFO` on the console and `DEBUG` in the file for normal experiments; temporarily set the console to `DEBUG` when investigating batch, parser, encoder-shape, or storage behavior.
 
 ## `llms.yaml`
 
@@ -85,11 +89,22 @@ Current content:
 
 ```yaml
 clustering:
+  evaluation:
+    sample_size: 100000
+    silhouette_sample_size: 5000
+    silhouette_samples_per_cluster: 5
+    silhouette_metric: "euclidean"
+    random_state: 42
+    elbow_window_factor: 2.0
+    max_silhouette_singleton_fraction: 0.5
+
   search:
     grid_search: [1908726]
     save_model_dir: "models/clustering/searching_models"
-    save_plots_dir: "plots/clustering/searching"
     random_state: 42
+    batch_size: 1000
+    min_samples_per_cluster: 20
+    num_k_candidates: 30
 
   train:
     k: 10661
@@ -107,6 +122,8 @@ Used by:
 - `sastllm cluster --mode test`
 
 Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation.
+
+The `evaluation` section controls the fixed candidate-comparison reservoir, cluster-stratified silhouette, elbow neighborhood, and silhouette reliability threshold. `sample_size` should exceed the expected K so the reservoir can also initialize MiniBatchKMeans independently of source order. `silhouette_samples_per_cluster` sets the target minimum representation for each selected silhouette cluster. Search and train create timestamped run directories under their respective `save_model_dir`; every report and plot is stored beside its model.
 
 ## `classification.yaml`
 

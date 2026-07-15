@@ -2,6 +2,8 @@
 
 This document describes the end-to-end SAST-LLM thesis pipeline and links each stage to its detailed reference file.
 
+For an exact command-by-command execution checklist, see [09_FULL_PIPELINE_RUNBOOK.md](./09_FULL_PIPELINE_RUNBOOK.md).
+
 ## Overview
 
 SAST-LLM transforms raw source repositories into semantic functionality representations and classifies repositories from their behavioral cluster profile.
@@ -36,6 +38,7 @@ Storage and configuration references:
 
 - [06_STORAGE_AND_DATA_ACCESS.md](./06_STORAGE_AND_DATA_ACCESS.md)
 - [07_CONFIGURATION_REFERENCE.md](./07_CONFIGURATION_REFERENCE.md)
+- [08_CLUSTERING_RESEARCH_GUIDE.md](./08_CLUSTERING_RESEARCH_GUIDE.md) for selecting and validating K in an experiment
 
 ## End-to-end data flow
 

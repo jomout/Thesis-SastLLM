@@ -8,8 +8,12 @@ from sastllm.db import FunctionalityManager
 from sastllm.dtos.update_dtos import UpdateFunctionalityDto
 from sastllm.utils.observability import log_duration
 
+from .artifacts import search_artifacts, training_artifacts
 from .config import ClusteringConfig, ClusteringMode
+from .evaluation import ClusterQualityEvaluator
 from .kmeans import ClusterAssignmentBatch, MiniBatchKMeansClusterer
+from .sampling import reservoir_sample
+from .selection import ClusterCountSelector, save_quality_report, save_selection_report
 from .sources import QdrantEmbeddingRepository
 
 logger = get_logger(__name__)
@@ -48,6 +52,7 @@ class FunctionalityClusteringService:
 
     def search(self) -> None:
         cfg = self.config.search
+        evaluation_cfg = self.config.evaluation
         logger.info(
             "Searching for clustering k",
             collection_name=self.collection_name,
@@ -58,29 +63,123 @@ class FunctionalityClusteringService:
 
         for n in cfg.grid_search:
             source = self.embedding_repository.first_n(n)
-            clusterer = MiniBatchKMeansClusterer(random_state=cfg.random_state, plots_dir=cfg.save_plots_dir)
+            evaluator = self._quality_evaluator()
             with log_duration(logger, "cluster_search_sample", n=n):
-                optimal_k = clusterer.find_optimal_k(
+                evaluation_sample = reservoir_sample(
                     source,
+                    sample_size=min(evaluation_cfg.sample_size, n),
+                    random_state=evaluation_cfg.random_state,
+                )
+                selector = ClusterCountSelector(
+                    evaluator=evaluator,
+                    random_state=cfg.random_state,
+                    elbow_window_factor=evaluation_cfg.elbow_window_factor,
+                    max_silhouette_singleton_fraction=evaluation_cfg.max_silhouette_singleton_fraction,
+                )
+                selection = selector.search(
+                    source,
+                    evaluation_sample,
                     n=n,
                     batch_size=cfg.batch_size,
                     min_samples_per_cluster=cfg.min_samples_per_cluster,
                     num_candidates=cfg.num_k_candidates,
-                    early_stop_patience=cfg.early_stop_patience,
                 )
-                clusterer.fit(source, k=optimal_k, batch_size=cfg.batch_size)
-                clusterer.save_model(cfg.save_model_dir / f"clusterer_n_{n}_k_{optimal_k}.joblib")
+                artifacts = search_artifacts(
+                    cfg.save_model_dir,
+                    n=n,
+                    k=selection.selected_k,
+                )
+                report_paths = save_selection_report(
+                    selection,
+                    output_dir=artifacts.directory,
+                    name=f"{artifacts.stem}_selection",
+                )
+                logger.info(
+                    "Selected clustering K",
+                    n=n,
+                    selected_k=selection.selected_k,
+                    reason=selection.selection_reason,
+                    elbow_k=selection.elbow_k,
+                    silhouette_best_k=selection.silhouette_best_k,
+                    calinski_harabasz_best_k=selection.calinski_harabasz_best_k,
+                    reports=[str(path) for path in report_paths],
+                )
+
+                clusterer = MiniBatchKMeansClusterer(random_state=cfg.random_state)
+                initialization_vectors = evaluation_sample.vectors if len(evaluation_sample) >= selection.selected_k else None
+                clusterer.fit(
+                    source,
+                    k=selection.selected_k,
+                    batch_size=cfg.batch_size,
+                    initialization_vectors=initialization_vectors,
+                )
+                if clusterer.kmeans is None:
+                    raise RuntimeError("Selected clusterer did not produce a fitted model.")
+                final_quality = evaluator.evaluate_streaming(
+                    clusterer.kmeans,
+                    source,
+                    batch_size=cfg.batch_size,
+                    silhouette_sample=evaluation_sample,
+                    min_cluster_size=cfg.min_samples_per_cluster,
+                )
+                clusterer.save_model(artifacts.model)
+                quality_path = save_quality_report(final_quality, artifacts.quality_report)
+                logger.info(
+                    "Saved clustering search artifacts",
+                    artifact_dir=str(artifacts.directory),
+                    model_file=str(artifacts.model),
+                    quality_report=str(quality_path),
+                )
 
     def train(self) -> None:
         cfg = self.config.train
+        evaluation_cfg = self.config.evaluation
         source = self.embedding_repository.for_split("train")
         train_count = self.embedding_repository.count_for_split("train")
         logger.info("Training clustering model", collection_name=self.collection_name, split="train", embeddings=train_count, k=cfg.k)
+        if train_count < cfg.k:
+            raise ValueError(f"Cannot fit k={cfg.k}; only {train_count} training embeddings are available.")
+
+        with log_duration(logger, "cluster_train_sample", split="train", embeddings=train_count, k=cfg.k):
+            evaluation_sample = reservoir_sample(
+                source,
+                sample_size=min(max(evaluation_cfg.sample_size, cfg.k), train_count),
+                random_state=evaluation_cfg.random_state,
+            )
 
         clusterer = MiniBatchKMeansClusterer(random_state=cfg.random_state)
+        artifacts = training_artifacts(cfg.save_model_dir, k=cfg.k)
         with log_duration(logger, "cluster_train_fit", split="train", embeddings=train_count, k=cfg.k):
-            clusterer.fit(source, k=cfg.k, batch_size=cfg.batch_size)
-            clusterer.save_model(cfg.save_model_dir / f"clusterer_k_{cfg.k}.joblib")
+            clusterer.fit(
+                source,
+                k=cfg.k,
+                batch_size=cfg.batch_size,
+                initialization_vectors=evaluation_sample.vectors,
+            )
+            clusterer.save_model(artifacts.model)
+
+        if clusterer.kmeans is None:
+            raise RuntimeError("Trained clusterer did not produce a fitted model.")
+        with log_duration(logger, "cluster_train_quality", split="train", embeddings=train_count, k=cfg.k):
+            quality = self._quality_evaluator().evaluate_streaming(
+                clusterer.kmeans,
+                source,
+                batch_size=cfg.batch_size,
+                silhouette_sample=evaluation_sample,
+                min_cluster_size=self.config.search.min_samples_per_cluster,
+            )
+            quality_path = save_quality_report(quality, artifacts.quality_report)
+            logger.info(
+                "Validated trained clustering model",
+                artifact_dir=str(artifacts.directory),
+                model_file=str(artifacts.model),
+                quality_report=str(quality_path),
+                normalized_inertia=quality.normalized_inertia,
+                silhouette=quality.silhouette_score,
+                calinski_harabasz=quality.calinski_harabasz_score,
+                empty_clusters=quality.cluster_sizes.empty_clusters,
+                below_minimum_clusters=quality.cluster_sizes.below_minimum_clusters,
+            )
 
         with log_duration(logger, "cluster_train_assignments", split="train"):
             self._store_assignments(clusterer.predict_batches(source, batch_size=cfg.batch_size))
@@ -112,3 +211,12 @@ class FunctionalityClusteringService:
             logger.debug("Stored cluster assignment batch", batch_size=len(updates), total=total)
 
         logger.info("Stored %s functionality cluster assignments.", total)
+
+    def _quality_evaluator(self) -> ClusterQualityEvaluator:
+        cfg = self.config.evaluation
+        return ClusterQualityEvaluator(
+            silhouette_sample_size=cfg.silhouette_sample_size,
+            silhouette_samples_per_cluster=cfg.silhouette_samples_per_cluster,
+            silhouette_metric=cfg.silhouette_metric,
+            random_state=cfg.random_state,
+        )

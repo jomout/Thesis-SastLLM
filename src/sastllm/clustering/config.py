@@ -13,12 +13,21 @@ ClusteringMode = Literal["search", "train", "test"]
 class SearchConfig:
     grid_search: tuple[int, ...]
     save_model_dir: Path
-    save_plots_dir: Path
     random_state: int = 42
     batch_size: int = 1000
     min_samples_per_cluster: int = 20
     num_k_candidates: int = 30
-    early_stop_patience: int = 4
+
+
+@dataclass(frozen=True)
+class EvaluationConfig:
+    sample_size: int = 100000
+    silhouette_sample_size: int = 5000
+    silhouette_samples_per_cluster: int = 5
+    silhouette_metric: str = "euclidean"
+    random_state: int = 42
+    elbow_window_factor: float = 2.0
+    max_silhouette_singleton_fraction: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,7 @@ class TestConfig:
 
 @dataclass(frozen=True)
 class ClusteringConfig:
+    evaluation: EvaluationConfig
     search: SearchConfig
     train: TrainConfig
     test: TestConfig
@@ -50,19 +60,37 @@ class ClusteringConfig:
         search_raw = _section(raw, "search")
         train_raw = _section(raw, "train")
         test_raw = _section(raw, "test")
+        evaluation_raw = _section(raw, "evaluation")
 
         random_state = _int(search_raw, "random_state", default=42)
 
         return cls(
+            evaluation=EvaluationConfig(
+                sample_size=_int(evaluation_raw, "sample_size", default=100000),
+                silhouette_sample_size=_int(evaluation_raw, "silhouette_sample_size", default=5000),
+                silhouette_samples_per_cluster=_int(
+                    evaluation_raw,
+                    "silhouette_samples_per_cluster",
+                    default=5,
+                ),
+                silhouette_metric=_str(evaluation_raw, "silhouette_metric", default="euclidean"),
+                random_state=_int(evaluation_raw, "random_state", default=random_state),
+                elbow_window_factor=_float(evaluation_raw, "elbow_window_factor", default=2.0, minimum=1.0),
+                max_silhouette_singleton_fraction=_float(
+                    evaluation_raw,
+                    "max_silhouette_singleton_fraction",
+                    default=0.5,
+                    minimum=0.0,
+                    maximum=1.0,
+                ),
+            ),
             search=SearchConfig(
                 grid_search=tuple(_int_list(search_raw, "grid_search")),
                 save_model_dir=Path(_str(search_raw, "save_model_dir", default="models/clustering/searching_models")),
-                save_plots_dir=Path(_str(search_raw, "save_plots_dir", default="plots/clustering/searching")),
                 random_state=random_state,
                 batch_size=_int(search_raw, "batch_size", default=1000),
                 min_samples_per_cluster=_int(search_raw, "min_samples_per_cluster", default=20),
                 num_k_candidates=_int(search_raw, "num_k_candidates", default=30),
-                early_stop_patience=_int(search_raw, "early_stop_patience", default=4),
             ),
             train=TrainConfig(
                 k=_int(train_raw, "k"),
@@ -111,3 +139,22 @@ def _int_list(raw: dict[str, Any], key: str) -> list[int]:
     if any(item <= 0 for item in value):
         raise ValueError(f"Clustering config key '{key}' must contain only positive ints.")
     return value
+
+
+def _float(
+    raw: dict[str, Any],
+    key: str,
+    *,
+    default: float,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    value = raw.get(key, default)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"Clustering config key '{key}' must be numeric.")
+    result = float(value)
+    if minimum is not None and result < minimum:
+        raise ValueError(f"Clustering config key '{key}' must be >= {minimum}.")
+    if maximum is not None and result > maximum:
+        raise ValueError(f"Clustering config key '{key}' must be <= {maximum}.")
+    return result

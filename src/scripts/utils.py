@@ -6,6 +6,10 @@ import yaml
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import OpenAI
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 def load_yaml(config_path: Union[str, Path] = "configs/base.yaml") -> Dict:
     """
@@ -16,10 +20,13 @@ def load_yaml(config_path: Union[str, Path] = "configs/base.yaml") -> Dict:
     """
     path = Path(config_path)
     if not path.exists():
+        logger.error("Configuration file was not found", path=str(path))
         raise FileNotFoundError(f"Config file not found: {path}")
 
     with path.open("r") as f:
-        return yaml.safe_load(f) or {}
+        config = yaml.safe_load(f) or {}
+    logger.debug("Loaded YAML configuration", path=str(path), top_level_keys=sorted(config))
+    return config
 
 
 def get_model(
@@ -67,6 +74,7 @@ def get_model(
         raise ValueError(f"Both 'models.{processor}.host' and 'models.{processor}.name' must be set in YAML.")
 
     params = llm_cfg.get("params", {})
+    logger.info("Building configured LLM", processor=processor, host=host, model=name)
 
     if host == "google":
         # expects GOOGLE_API_KEY to be available in the environment or configured globally
@@ -83,6 +91,7 @@ def get_model(
             raise ValueError(f"'models.{processor}.params' must include 'endpoint_url' and 'access_token' for host 'issel'.")
         return CustomLLM(endpoint_url=endpoint_url, access_token=access_token)
 
+    logger.error("Unsupported configured LLM host", processor=processor, host=host)
     raise ValueError(f"Unsupported LLM host: {host!r}. Supported: 'google', 'openai', 'issel'.")
 
 

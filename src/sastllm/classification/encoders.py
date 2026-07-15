@@ -6,9 +6,12 @@ from typing import Iterable, Literal, Protocol
 import numpy as np
 import torch
 
+from sastllm.configs import get_logger
 from sastllm.entities import RepositoryWithClusterDistribution
 
 from .config import load_label_map
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,7 @@ class ClusterDistributionEncoder:
 
     def encode(self, repositories: Iterable[RepositoryWithClusterDistribution]) -> RepositoryEncoding:
         repos = list(repositories)
+        logger.debug("Encoding repository cluster distributions", repositories=len(repos), num_clusters=self.num_clusters)
         features = np.zeros((len(repos), self.num_clusters), dtype=np.float32)
         repository_ids = np.empty(len(repos), dtype=np.int64)
         labels = np.empty(len(repos), dtype=np.int64)
@@ -96,7 +100,17 @@ class ClusterDistributionEncoder:
             if norm > 0:
                 features /= norm
 
-        return RepositoryEncoding(repository_ids=repository_ids, features=features, labels=labels)
+        encoding = RepositoryEncoding(repository_ids=repository_ids, features=features, labels=labels)
+        empty_repositories = int(np.count_nonzero(features.sum(axis=1) == 0))
+        if empty_repositories:
+            logger.warning("Encoded repositories without cluster features", count=empty_repositories, encoder=self.__class__.__name__)
+        logger.info(
+            "Encoded repository cluster distributions",
+            repositories=len(repos),
+            feature_shape=features.shape,
+            empty_repositories=empty_repositories,
+        )
+        return encoding
 
     def encode_ids(self, ids: Iterable[int] | dict[int, int] | None) -> np.ndarray:
         if ids is None:
@@ -188,6 +202,7 @@ class OrderedFunctionalityTimeSeriesEncoder:
         repository_ids = np.empty(len(repos), dtype=np.int64)
         labels = np.empty(len(repos), dtype=np.int64)
         sequences = [self._cluster_ids_ordered_by_functionality_id(repo) for repo in repos]
+        truncated_repositories = 0
 
         sequence_length = self.max_sequence_length
         if sequence_length is None:
@@ -201,16 +216,32 @@ class OrderedFunctionalityTimeSeriesEncoder:
             labels[row] = self.labels.encode_label(repo.label)
 
             truncated = self._truncate(sequence, sequence_length)
+            truncated_repositories += int(len(sequence) > sequence_length)
             sequence_lengths[row] = len(truncated)
             for step, cluster_id in enumerate(truncated):
                 features[row, step, self._validated_cluster_index(cluster_id)] = 1.0
 
-        return RepositoryEncoding(
+        encoding = RepositoryEncoding(
             repository_ids=repository_ids,
             features=features,
             labels=labels,
             sequence_lengths=sequence_lengths,
         )
+        if truncated_repositories:
+            logger.warning(
+                "Truncated repository functionality sequences",
+                encoder=self.__class__.__name__,
+                repositories=truncated_repositories,
+                max_sequence_length=sequence_length,
+                truncation=self.truncation,
+            )
+        logger.info(
+            "Encoded repository one-hot sequences",
+            repositories=len(repos),
+            feature_shape=features.shape,
+            empty_sequences=int(np.count_nonzero(sequence_lengths == 0)),
+        )
+        return encoding
 
     def encode_repo(self, repo: RepositoryWithClusterDistribution) -> np.ndarray:
         sequence = self._cluster_ids_ordered_by_functionality_id(repo)
@@ -279,6 +310,7 @@ class OrderedFunctionalityTokenSequenceEncoder:
         repository_ids = np.empty(len(repos), dtype=np.int64)
         labels = np.empty(len(repos), dtype=np.int64)
         sequences = [self._cluster_ids_ordered_by_functionality_id(repo) for repo in repos]
+        truncated_repositories = 0
 
         sequence_length = self.max_sequence_length
         if sequence_length is None:
@@ -292,16 +324,32 @@ class OrderedFunctionalityTokenSequenceEncoder:
             labels[row] = self.labels.encode_label(repo.label)
 
             truncated = self._truncate(sequence, sequence_length)
+            truncated_repositories += int(len(sequence) > sequence_length)
             sequence_lengths[row] = len(truncated)
             for step, cluster_id in enumerate(truncated):
                 features[row, step] = self._cluster_token_id(cluster_id)
 
-        return RepositoryEncoding(
+        encoding = RepositoryEncoding(
             repository_ids=repository_ids,
             features=features,
             labels=labels,
             sequence_lengths=sequence_lengths,
         )
+        if truncated_repositories:
+            logger.warning(
+                "Truncated repository token sequences",
+                repositories=truncated_repositories,
+                max_sequence_length=sequence_length,
+                truncation=self.truncation,
+            )
+        logger.info(
+            "Encoded repository token sequences",
+            repositories=len(repos),
+            feature_shape=features.shape,
+            vocabulary_size=self.feature_dim,
+            empty_sequences=int(np.count_nonzero(sequence_lengths == 0)),
+        )
+        return encoding
 
     def encode_repo(self, repo: RepositoryWithClusterDistribution) -> np.ndarray:
         sequence = self._cluster_ids_ordered_by_functionality_id(repo)

@@ -2,6 +2,8 @@
 
 This document lists the SAST-LLM CLI commands and common execution flows.
 
+Full experiment runbook: [09_FULL_PIPELINE_RUNBOOK.md](./09_FULL_PIPELINE_RUNBOOK.md)
+
 ## CLI
 
 ```bash
@@ -87,11 +89,13 @@ Modes:
 
 | Mode | Behavior |
 | --- | --- |
-| `search` | estimate `k`, save search model and plots |
-| `train` | fit MiniBatchKMeans on train embeddings and assign train cluster ids |
+| `search` | compare candidate K values using cohesion, separation, silhouette, CH, and inertia; save reports, model, and plots |
+| `train` | fit MiniBatchKMeans, write a full quality report, and assign train cluster ids |
 | `test` | load trained clusterer and assign test cluster ids |
 
 Reference: [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)
+
+Research workflow: [08_CLUSTERING_RESEARCH_GUIDE.md](./08_CLUSTERING_RESEARCH_GUIDE.md)
 
 ### Classification
 
@@ -198,4 +202,4 @@ Use this when:
 | `batch_results_extra/` | downloaded Batch API outputs/errors |
 | `models/clustering/trained_models/` | clustering joblib files |
 | `models/classification/trained_models/` | classifier checkpoints, configs, metrics |
-| `plots/clustering/searching/` | clustering search plots |
+| `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | clustering search model, reports, CSV, and plot |

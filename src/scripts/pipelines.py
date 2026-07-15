@@ -48,7 +48,7 @@ def load_dataset() -> None:
             loader.run()
 
     except Exception as e:
-        logger.error(f"Dataset loading failed: {e}")
+        logger.error("Dataset loading failed", error=str(e), exc_info=True)
         raise RuntimeError(f"Dataset loading failed: {e}") from e
 
 
@@ -89,7 +89,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
         with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):
             processor.run(mode=mode)
     except Exception as e:
-        logger.error(f"Functionality clustering failed: {e}")
+        logger.error("Functionality clustering failed", mode=mode, error=str(e), exc_info=True)
         raise RuntimeError(f"Functionality clustering failed: {e}") from e
 
 
@@ -134,7 +134,7 @@ def generate_functionalities() -> None:
         with log_duration(logger, "functionality_generation", batch_size=processor.batch_size, sleep_interval=processor.sleep_interval):
             processor.run()
     except Exception as e:
-        logger.error(f"Functionality generation failed: {e}")
+        logger.error("Functionality generation failed", error=str(e), exc_info=True)
         raise RuntimeError(f"Functionality generation failed: {e}") from e
 
 
@@ -172,7 +172,7 @@ def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
                 service.evaluate(split="test")
 
     except Exception as e:
-        logger.error(f"Repository classification failed: {e}")
+        logger.error("Repository classification failed", mode=mode, error=str(e), exc_info=True)
         raise RuntimeError(f"Repository classification failed: {e}") from e
 
 

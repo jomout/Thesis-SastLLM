@@ -10,6 +10,10 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatResult
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 class CustomLLM(BaseChatModel):
     """Custom chat model wrapper for Endpoint on GCP."""
@@ -40,9 +44,15 @@ class CustomLLM(BaseChatModel):
         payload = {"messages": payload_msgs}
         headers = {"access_token": self.access_token}
 
-        resp = requests.post(self.endpoint_url, json=payload, headers=headers)
-        resp.raise_for_status()
+        logger.debug("Sending custom LLM request", endpoint=self.endpoint_url, messages=len(payload_msgs))
+        try:
+            resp = requests.post(self.endpoint_url, json=payload, headers=headers)
+            resp.raise_for_status()
+        except requests.RequestException as error:
+            logger.error("Custom LLM request failed", endpoint=self.endpoint_url, error=str(error), exc_info=True)
+            raise
         data = resp.json()
+        logger.debug("Custom LLM request completed", endpoint=self.endpoint_url, status_code=resp.status_code)
 
         content = str(data)
 

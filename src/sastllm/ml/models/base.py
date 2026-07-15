@@ -7,6 +7,10 @@ import torch
 import torch.nn as nn
 from lightning.pytorch.core import LightningModule
 
+from sastllm.configs import get_logger
+
+logger = get_logger(__name__)
+
 
 class RepositoryClassifierModule(LightningModule):
     """Base Lightning module for repository classifiers."""
@@ -35,6 +39,13 @@ class RepositoryClassifierModule(LightningModule):
             weights = torch.ones(output_dim, dtype=torch.float)
         self.register_buffer("class_weights", weights)
         self.criterion = nn.CrossEntropyLoss(weight=criterion_weight)
+        logger.debug(
+            "Initialized classifier loss",
+            output_dim=output_dim,
+            use_class_weights=use_class_weights,
+            class_counts=class_counts,
+            class_weights=weights.tolist(),
+        )
 
     @abstractmethod
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -54,6 +65,12 @@ class RepositoryClassifierModule(LightningModule):
         return ids, self(features)
 
     def configure_optimizers(self):
+        logger.debug(
+            "Configuring Adam optimizer",
+            model=self.__class__.__name__,
+            lr=float(self.hparams.lr),  # type: ignore[attr-defined]
+            weight_decay=float(self.hparams.weight_decay),  # type: ignore[attr-defined]
+        )
         return torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.lr,  # type: ignore[attr-defined]

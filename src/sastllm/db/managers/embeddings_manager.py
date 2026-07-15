@@ -5,10 +5,13 @@ import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
+from sastllm.configs import get_logger, settings
+
 logging.getLogger("qdrant_client.http").setLevel(logging.WARNING)
 logging.getLogger("qdrant_client").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = get_logger(__name__)
 
 
 class EmbeddingsManager:
@@ -16,9 +19,37 @@ class EmbeddingsManager:
     Manages the storage and retrieval of embeddings using Qdrant.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 6333, grpc_port: int = 6334):
-        self.rest = QdrantClient(host=host, port=port, prefer_grpc=False, timeout=100000)
-        self.grpc = QdrantClient(host=host, grpc_port=grpc_port, prefer_grpc=True, timeout=100000)
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        grpc_port: int | None = None,
+        timeout: int | None = None,
+    ):
+        resolved_host = host or settings.qdrant_host
+        resolved_port = port or settings.qdrant_port
+        resolved_grpc_port = grpc_port or settings.qdrant_grpc_port
+        resolved_timeout = timeout or settings.qdrant_timeout
+
+        self.rest = QdrantClient(
+            host=resolved_host,
+            port=resolved_port,
+            prefer_grpc=False,
+            timeout=resolved_timeout,
+        )
+        self.grpc = QdrantClient(
+            host=resolved_host,
+            grpc_port=resolved_grpc_port,
+            prefer_grpc=True,
+            timeout=resolved_timeout,
+        )
+        logger.debug(
+            "Initialized Qdrant embedding manager",
+            host=resolved_host,
+            rest_port=resolved_port,
+            grpc_port=resolved_grpc_port,
+            timeout=resolved_timeout,
+        )
 
     def insert_embeddings(
         self,
@@ -33,7 +64,16 @@ class EmbeddingsManager:
         """
         # Create collection if it doesn't exist
         if not embeddings:
+            logger.error("Cannot insert an empty embedding batch", collection=collection_name)
             raise ValueError("Embeddings list is empty.")
+
+        logger.info(
+            "Inserting embeddings into Qdrant",
+            collection=collection_name,
+            embeddings=len(embeddings),
+            vector_dim=len(embeddings[0]),
+            batch_size=batch_size,
+        )
 
         size = len(embeddings[0])
 
@@ -48,6 +88,7 @@ class EmbeddingsManager:
         for i in range(0, len(points), batch_size):
             batch_points = points[i : i + batch_size]
             self.grpc.upsert(collection_name=collection_name, points=batch_points)
+        logger.info("Inserted embeddings into Qdrant", collection=collection_name, embeddings=len(points))
 
     def update_payload_by_filter(
         self,
@@ -65,7 +106,7 @@ class EmbeddingsManager:
         """
 
         def build_filter(f: dict) -> models.Filter:
-            must_conditions = []
+            must_conditions: list[models.Condition] = []
 
             for key, value in f.items():
                 if isinstance(value, dict):
@@ -98,8 +139,15 @@ class EmbeddingsManager:
                 payload=payload,
                 points=models.FilterSelector(filter=qdrant_filter),
             )
+            logger.info(
+                "Updated Qdrant payload by filter",
+                collection=collection_name,
+                filter=filter,
+                payload_keys=sorted(payload),
+            )
 
         except Exception as e:
+            logger.error("Qdrant payload update failed", collection=collection_name, error=str(e), exc_info=True)
             raise RuntimeError(f"Failed bulk payload update: {e}") from e
 
     def update_embedding_payload(
@@ -145,6 +193,7 @@ class EmbeddingsManager:
             if next_page is None:
                 break
 
+        logger.debug("Fetched existing Qdrant ids", collection=collection_name, ids=len(existing_ids))
         return existing_ids
 
     def get_embeddings_by_ids(self, collection_name: str, ids: list, batch_size: int = 100):
@@ -181,6 +230,7 @@ class EmbeddingsManager:
         """
 
         yielded = 0
+        logger.debug("Streaming embeddings from Qdrant", collection=collection_name, limit=n, batch_size=batch_size)
         next_page = None
 
         while True:
@@ -205,9 +255,11 @@ class EmbeddingsManager:
                 yielded += 1
 
                 if n is not None and yielded >= n:
+                    logger.debug("Completed bounded Qdrant embedding stream", collection=collection_name, embeddings=yielded)
                     return
 
             if next_page is None:
+                logger.debug("Completed Qdrant embedding stream", collection=collection_name, embeddings=yielded)
                 return
 
     def get_embeddings_by_payload_field(
@@ -236,6 +288,14 @@ class EmbeddingsManager:
         query_filter = models.Filter(should=[models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values])
 
         next_page = None
+        yielded = 0
+        logger.debug(
+            "Streaming filtered embeddings from Qdrant",
+            collection=collection_name,
+            field=field,
+            values=values,
+            batch_size=batch_size,
+        )
 
         while True:
             points, next_page = self.grpc.scroll(
@@ -251,10 +311,12 @@ class EmbeddingsManager:
                 break
 
             for p in points:
+                yielded += 1
                 yield int(p.id), np.asarray(p.vector, dtype=np.float32)
 
             if next_page is None:
                 break
+        logger.debug("Completed filtered Qdrant embedding stream", collection=collection_name, embeddings=yielded, field=field)
 
     def count_embeddings_by_payload_field(self, collection_name: str, field: str, values: str | list[str]) -> int:
         """
@@ -275,4 +337,5 @@ class EmbeddingsManager:
         query_filter = models.Filter(should=[models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values])
 
         count_result = self.grpc.count(collection_name=collection_name, count_filter=query_filter)
+        logger.debug("Counted filtered Qdrant embeddings", collection=collection_name, field=field, values=values, count=count_result.count)
         return count_result.count
