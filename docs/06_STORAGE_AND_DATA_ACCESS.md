@@ -6,10 +6,10 @@ SAST-LLM uses PostgreSQL for relational pipeline state and Qdrant for functional
 
 `docker-compose.yml` defines:
 
-| Service | Image | Ports | Purpose |
-| --- | --- | --- | --- |
-| `code_database` | `postgres:18-alpine` | `${POSTGRES_PORT}:5432` | relational pipeline state |
-| `code_embeddings` | `qdrant/qdrant:v1.17` | `6333`, `6334` | vector embeddings |
+| Service           | Image                 | Ports                   | Purpose                   |
+| ----------------- | --------------------- | ----------------------- | ------------------------- |
+| `code_database`   | `postgres:18-alpine`  | `${POSTGRES_PORT}:5432` | relational pipeline state |
+| `code_embeddings` | `qdrant/qdrant:v1.17` | `6333`, `6334`          | vector embeddings         |
 
 PostgreSQL environment variables:
 
@@ -32,7 +32,7 @@ POSTGRES_PORT
 
 ## PostgreSQL ORM models
 
-Main models live in `src/sastllm/db/models.py`.
+Main models live in `src/argus/db/models.py`.
 
 ### `repositories`
 
@@ -162,26 +162,26 @@ sentence-transformers/all-mpnet-base-v2
 
 Each point uses:
 
-| Qdrant item | Value |
-| --- | --- |
-| id | `functionality_id` |
-| vector | sentence-transformer embedding |
-| distance | cosine |
-| payload.repository_id | owning repository |
-| payload.split | `full`, `train`, or `test` |
-| payload.tag | normalized functionality tag |
+| Qdrant item           | Value                          |
+| --------------------- | ------------------------------ |
+| id                    | `functionality_id`             |
+| vector                | sentence-transformer embedding |
+| distance              | cosine                         |
+| payload.repository_id | owning repository              |
+| payload.split         | `full`, `train`, or `test`     |
+| payload.tag           | normalized functionality tag   |
 
 ## Data managers
 
-Managers under `src/sastllm/db/managers/` provide typed access around SQLAlchemy and Qdrant:
+Managers under `src/argus/db/managers/` provide typed access around SQLAlchemy and Qdrant:
 
-| Manager | Main responsibility |
-| --- | --- |
-| `RepositoryManager` | repositories, split updates, classification aggregation |
-| `FileManager` | file rows |
-| `SnippetManager` | snippet rows and unprocessed snippet iteration |
-| `FunctionalityManager` | functionality insert/update/query |
-| `EmbeddingsManager` | Qdrant insert, retrieval, count, payload update |
+| Manager                | Main responsibility                                     |
+| ---------------------- | ------------------------------------------------------- |
+| `RepositoryManager`    | repositories, split updates, classification aggregation |
+| `FileManager`          | file rows                                               |
+| `SnippetManager`       | snippet rows and unprocessed snippet iteration          |
+| `FunctionalityManager` | functionality insert/update/query                       |
+| `EmbeddingsManager`    | Qdrant insert, retrieval, count, payload update         |
 
 Most SQL writes use transaction contexts. Bulk operations are used for snippets, functionalities, split updates, and cluster-id assignment.
 

@@ -26,15 +26,15 @@ Each level represents a finer unit of analysis:
 
 Fields:
 
-| Field | Meaning |
-| --- | --- |
-| `repository_id` | primary key |
-| `name` | unique repository identifier |
-| `label` | source label, such as `benign`, `apt`, `rat`, `worm` |
-| `processed` | true when all child files/snippets are processed |
-| `split` | `train` or `test` |
-| `created_at` | insert timestamp |
-| `updated_at` | update timestamp |
+| Field           | Meaning                                              |
+| --------------- | ---------------------------------------------------- |
+| `repository_id` | primary key                                          |
+| `name`          | unique repository identifier                         |
+| `label`         | source label, such as `benign`, `apt`, `rat`, `worm` |
+| `processed`     | true when all child files/snippets are processed     |
+| `split`         | `train` or `test`                                    |
+| `created_at`    | insert timestamp                                     |
+| `updated_at`    | update timestamp                                     |
 
 Used by loading, splitting, processed filtering, and classification.
 
@@ -42,16 +42,16 @@ Used by loading, splitting, processed filtering, and classification.
 
 Fields:
 
-| Field | Meaning |
-| --- | --- |
-| `file_id` | primary key |
-| `repository_id` | parent repository |
-| `language` | internal language name from `languages.yaml` |
-| `filename` | basename |
-| `filepath` | path relative to dataset root |
-| `processed` | true when all child snippets are processed |
-| `created_at` | insert timestamp |
-| `updated_at` | update timestamp |
+| Field           | Meaning                                      |
+| --------------- | -------------------------------------------- |
+| `file_id`       | primary key                                  |
+| `repository_id` | parent repository                            |
+| `language`      | internal language name from `languages.yaml` |
+| `filename`      | basename                                     |
+| `filepath`      | path relative to dataset root                |
+| `processed`     | true when all child snippets are processed   |
+| `created_at`    | insert timestamp                             |
+| `updated_at`    | update timestamp                             |
 
 Important indexes:
 
@@ -62,16 +62,16 @@ Important indexes:
 
 Fields:
 
-| Field | Meaning |
-| --- | --- |
-| `snippet_id` | primary key |
-| `file_id` | parent file |
-| `start_line` | 1-based start line |
-| `end_line` | 1-based inclusive end line |
-| `code` | chunked source code |
-| `processed` | true after functionality generation/import |
-| `created_at` | insert timestamp |
-| `updated_at` | update timestamp |
+| Field        | Meaning                                    |
+| ------------ | ------------------------------------------ |
+| `snippet_id` | primary key                                |
+| `file_id`    | parent file                                |
+| `start_line` | 1-based start line                         |
+| `end_line`   | 1-based inclusive end line                 |
+| `code`       | chunked source code                        |
+| `processed`  | true after functionality generation/import |
+| `created_at` | insert timestamp                           |
+| `updated_at` | update timestamp                           |
 
 Important indexes:
 
@@ -83,15 +83,15 @@ Important indexes:
 
 Fields:
 
-| Field | Meaning |
-| --- | --- |
-| `functionality_id` | primary key |
-| `snippet_id` | parent snippet |
-| `description` | raw LLM-generated action sentence |
-| `tag` | normalized functionality text |
-| `cluster_id` | assigned semantic cluster id |
-| `created_at` | insert timestamp |
-| `updated_at` | update timestamp |
+| Field              | Meaning                           |
+| ------------------ | --------------------------------- |
+| `functionality_id` | primary key                       |
+| `snippet_id`       | parent snippet                    |
+| `description`      | raw LLM-generated action sentence |
+| `tag`              | normalized functionality text     |
+| `cluster_id`       | assigned semantic cluster id      |
+| `created_at`       | insert timestamp                  |
+| `updated_at`       | update timestamp                  |
 
 Important indexes:
 
@@ -103,10 +103,10 @@ Important indexes:
 
 The ORM also defines:
 
-| Model/table | Purpose |
-| --- | --- |
-| `CSNCodeSnippetModel` / `csn_snippets` | CodeSearchNet snippet/functionality storage |
-| `RepositoryPredictionModel` / `repository_predictions` | optional repository prediction records |
+| Model/table                                            | Purpose                                     |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `CSNCodeSnippetModel` / `csn_snippets`                 | CodeSearchNet snippet/functionality storage |
+| `RepositoryPredictionModel` / `repository_predictions` | optional repository prediction records      |
 
 The current classifier writes prediction and metric JSON files under model directories rather than inserting into `repository_predictions`.
 
@@ -159,20 +159,20 @@ That dictionary becomes the repository-level feature vector.
 ## Schema/data flow
 
 ```text
-sastllm load
+argus load
   -> repositories/files/snippets
 
-sastllm generate_functionalities
+argus generate_functionalities
   -> functionalities
   -> snippets.processed=true
   -> trigger updates files/repositories processed
 
-sastllm split
+argus split
   -> repositories.split
 
-sastllm cluster --mode ...
+argus cluster --mode ...
   -> functionalities.cluster_id
 
-sastllm classify --mode ...
+argus classify --mode ...
   -> reads processed repositories and cluster counts
 ```

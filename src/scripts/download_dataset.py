@@ -1,11 +1,11 @@
 import os
 import re
-from typing import Literal, Optional
+from typing import Literal
 
 from datasets import load_dataset
 from tqdm import tqdm
 
-from sastllm.configs import get_logger
+from argus.configs import get_logger
 from scripts.utils import load_yaml
 
 logger = get_logger(__name__)
@@ -42,11 +42,11 @@ def normalize_string(s: str) -> str:
 
 def download_benign_dataset(name: Literal["train", "test"] = "train") -> None:
     config = load_yaml()
-    database_path: Optional[str] = config.get("paths", {}).get("dataset")
+    database_path: str | None = config.get("paths", {}).get("dataset")
 
     if not database_path:
         msg = "`paths.dataset` is not defined in the YAML config."
-        logger.error(msg)
+        logger.exception(msg)
         raise ValueError(msg)
 
     dataset = load_dataset("code_search_net", "all", split=name, trust_remote_code=True)

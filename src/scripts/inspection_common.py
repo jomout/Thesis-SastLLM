@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Sequence, cast
+from typing import Literal, cast
 
 import numpy as np
 from dotenv import load_dotenv
 
-from sastllm.classification import ClassificationConfig
-from sastllm.classification.encoders import LabelMapping
-from sastllm.configs import setup_logging
-from sastllm.db.db import SessionLocal
-from sastllm.db.models import FileModel, FunctionalityModel, RepositoryModel, SnippetModel
-from sastllm.entities import FunctionalityWithCluster, RepositoryWithClusterDistribution
+from argus.classification import ClassificationConfig
+from argus.classification.encoders import LabelMapping
+from argus.configs import setup_logging
+from argus.db.db import SessionLocal
+from argus.db.models import FileModel, FunctionalityModel, RepositoryModel, SnippetModel
+from argus.entities import FunctionalityWithCluster, RepositoryWithClusterDistribution
 
 
 @dataclass(frozen=True)
@@ -241,7 +242,7 @@ def format_vector(vector: Sequence[float | int]) -> str:
     return "[" + ", ".join(_format_number(value) for value in vector) + "]"
 
 
-def _format_number(value: float | int) -> str:
+def _format_number(value: float) -> str:
     as_float = float(value)
     if as_float.is_integer():
         return str(int(as_float))

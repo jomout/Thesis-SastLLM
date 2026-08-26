@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from sastllm.classification.encoders import OrderedFunctionalityTimeSeriesEncoder
+from argus.classification.encoders import OrderedFunctionalityTimeSeriesEncoder
 
 from .inspection_common import (
     add_repository_selector,

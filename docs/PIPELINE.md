@@ -24,15 +24,15 @@ Code repositories
 
 ## Stage map
 
-| Stage | Main command | Main output | Detailed reference |
-| --- | --- | --- | --- |
-| 1. Data ingestion and chunking | `sastllm load` | `repositories`, `files`, `snippets` | [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.md) |
-| 2. Functionality generation | `sastllm generate_functionalities` | `functionalities.description`, `functionalities.tag` | [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md) |
-| 3. Embedding and splitting | `sastllm split` | `repositories.split`, Qdrant `split` payloads | [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md) |
-| 4. Functionality clustering | `sastllm cluster --mode ...` | `functionalities.cluster_id`, clustering model | [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md) |
-| 5. Repository classification | `sastllm classify --mode ...` | model artifacts, predictions, metrics | [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md) |
+| Stage                          | Main command                     | Main output                                          | Detailed reference                                                       |
+| ------------------------------ | -------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1. Data ingestion and chunking | `argus load`                     | `repositories`, `files`, `snippets`                  | [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.md) |
+| 2. Functionality generation    | `argus generate_functionalities` | `functionalities.description`, `functionalities.tag` | [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md)       |
+| 3. Embedding and splitting     | `argus split`                    | `repositories.split`, Qdrant `split` payloads        | [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md)         |
+| 4. Functionality clustering    | `argus cluster --mode ...`       | `functionalities.cluster_id`, clustering model       | [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)       |
+| 5. Repository classification   | `argus classify --mode ...`      | model artifacts, predictions, metrics                | [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)     |
 
-For debugging and validation, `sastllm-inspect-distribution` and `sastllm-inspect-timeseries` inspect one repository and print how its clustered functionalities are encoded before model training.
+For debugging and validation, `argus-inspect-distribution` and `argus-inspect-timeseries` inspect one repository and print how its clustered functionalities are encoded before model training.
 
 Storage and configuration references:
 
@@ -62,21 +62,21 @@ Dataset directory
 A full experiment from raw local dataset usually follows:
 
 ```bash
-sastllm load
-sastllm generate_functionalities
+argus load
+argus generate_functionalities
 # ensure functionality embeddings exist in Qdrant
-sastllm split
-sastllm cluster --mode train
-sastllm classify --mode train
-sastllm cluster --mode test
-sastllm classify --mode test
+argus split
+argus cluster --mode train
+argus classify --mode train
+argus cluster --mode test
+argus classify --mode test
 ```
 
 The compact wrappers run only the final model stages:
 
 ```bash
-sastllm train
-sastllm test
+argus train
+argus test
 ```
 
 Current wrapper behavior:
@@ -90,7 +90,7 @@ They do not run dataset loading, LLM generation, splitting, or embedding creatio
 
 ## Current implementation caveats
 
-- `sastllm split` currently calls `split_repositories()` only. The available `embed_all_repositories()` helper is present but commented out in `src/scripts/pipelines.py`.
+- `argus split` currently calls `split_repositories()` only. The available `embed_all_repositories()` helper is present but commented out in `src/scripts/pipelines.py`.
 - Classification filters repositories with `processed=true`, so trigger propagation from snippets to files to repositories matters.
 - Classification treats every label other than exact `benign` as `malicious`.
 - The classification config accepts `l1_param` as an alias for the runtime `l1_lambda` field.

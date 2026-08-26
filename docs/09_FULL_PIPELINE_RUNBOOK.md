@@ -21,23 +21,19 @@ For detailed stage behavior, use [PIPELINE.md](./PIPELINE.md). For clustering re
 12. Evaluate the frozen classifier on test data
 ```
 
-Run commands from the project root:
-
-```bash
-cd /home/mjo/Workspace/Thesis-SastLLM
-```
+Run commands from the project root.
 
 ## 1. Configure the experiment
 
 Review these files before starting:
 
-| File | Configure |
-| --- | --- |
-| `configs/base.yaml` | source dataset path and logging |
-| `configs/llms.yaml` | functionality-generation model |
-| `configs/languages.yaml` | supported source languages |
-| `configs/split.yaml` | embedding model and train/test ratios |
-| `configs/clustering.yaml` | K search, clustering evaluation, and model paths |
+| File                          | Configure                                              |
+| ----------------------------- | ------------------------------------------------------ |
+| `configs/base.yaml`           | source dataset path and logging                        |
+| `configs/llms.yaml`           | functionality-generation model                         |
+| `configs/languages.yaml`      | supported source languages                             |
+| `configs/split.yaml`          | embedding model and train/test ratios                  |
+| `configs/clustering.yaml`     | K search, clustering evaluation, and model paths       |
 | `configs/classification.yaml` | architecture, K, training params, and checkpoint paths |
 
 Create or verify `.env` with the PostgreSQL and model-provider credentials described in [SETUP.md](./SETUP.md).
@@ -46,7 +42,7 @@ Install the project:
 
 ```bash
 uv sync
-uv run sastllm --help
+uv run argus --help
 ```
 
 ## 2. Start storage services
@@ -75,7 +71,7 @@ paths:
 Then run:
 
 ```bash
-uv run sastllm load
+uv run argus load
 ```
 
 Expected result:
@@ -93,13 +89,13 @@ Choose one functionality source.
 ### Direct LLM generation
 
 ```bash
-uv run sastllm generate_functionalities
+uv run argus generate_functionalities
 ```
 
 ### Existing cached results
 
 ```bash
-uv run sastllm load_cache_functionalities /path/to/cached_functionalities
+uv run argus load_cache_functionalities /path/to/cached_functionalities
 ```
 
 Expected result:
@@ -122,7 +118,7 @@ split:
 There is currently no dedicated embedding CLI command. Run the existing embedding helper:
 
 ```bash
-uv run python -c 'from scripts.utils import load_yaml; from sastllm.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
+uv run python -c 'from scripts.utils import load_yaml; from argus.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
 ```
 
 Expected result:
@@ -139,7 +135,7 @@ The embedder skips ids already present in the collection. If the functionality t
 Confirm the ratios in `configs/split.yaml`, then run:
 
 ```bash
-uv run sastllm split
+uv run argus split
 ```
 
 Expected result:
@@ -171,7 +167,7 @@ clustering:
 Run:
 
 ```bash
-uv run sastllm cluster --mode search
+uv run argus cluster --mode search
 ```
 
 Inspect:
@@ -235,7 +231,7 @@ Replace `K_SELECTED` with the integer value. All stages must use the same cluste
 Train on the train split:
 
 ```bash
-uv run sastllm cluster --mode train
+uv run argus cluster --mode train
 ```
 
 Inspect the resulting quality report before continuing:
@@ -249,7 +245,7 @@ Confirm that the evaluated count and cluster-size statistics are plausible. Trai
 Apply the frozen model to test functionalities:
 
 ```bash
-uv run sastllm cluster --mode test
+uv run argus cluster --mode test
 ```
 
 After this step, both train and test functionality rows should have zero-based cluster ids.
@@ -261,13 +257,13 @@ Validate at least one train and one test repository before classifier training.
 For the MLP distribution encoding:
 
 ```bash
-uv run sastllm-inspect-distribution --repository-id 123
+uv run argus-inspect-distribution --repository-id 123
 ```
 
 For the ordered LSTM/Transformer token encoding:
 
 ```bash
-uv run sastllm-inspect-timeseries --repository-id 123
+uv run argus-inspect-timeseries --repository-id 123
 ```
 
 Verify that:
@@ -282,10 +278,10 @@ Verify that:
 
 Set `classification.<mode>.model` consistently in `configs/classification.yaml`:
 
-| Model | Encoder | Use case |
-| --- | --- | --- |
-| `mlp` | cluster distribution | unordered frequency baseline |
-| `lstm` | ordered cluster-token sequence | sequential baseline |
+| Model         | Encoder                        | Use case                       |
+| ------------- | ------------------------------ | ------------------------------ |
+| `mlp`         | cluster distribution           | unordered frequency baseline   |
+| `lstm`        | ordered cluster-token sequence | sequential baseline            |
 | `transformer` | ordered cluster-token sequence | attention-based sequence model |
 
 For class imbalance, begin with only one correction:
@@ -302,7 +298,7 @@ Using both can overcorrect the minority class.
 Configure `classification.search.grid_search`, then run:
 
 ```bash
-uv run sastllm classify --mode search
+uv run argus classify --mode search
 ```
 
 Expected outputs:
@@ -320,7 +316,7 @@ Copy the selected runtime values into `classification.train.params` and keep the
 ## 13. Train the final classifier
 
 ```bash
-uv run sastllm classify --mode train
+uv run argus classify --mode train
 ```
 
 Expected output directory:
@@ -345,7 +341,7 @@ classification:
 Run the frozen classifier exactly once for the final reported experiment:
 
 ```bash
-uv run sastllm classify --mode test
+uv run argus classify --mode test
 ```
 
 Expected files in the trained model directory:
@@ -365,28 +361,28 @@ For a fresh dataset:
 docker compose up -d
 uv sync
 
-uv run sastllm load
-uv run sastllm generate_functionalities
+uv run argus load
+uv run argus generate_functionalities
 
-uv run python -c 'from scripts.utils import load_yaml; from sastllm.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
-uv run sastllm split
+uv run python -c 'from scripts.utils import load_yaml; from argus.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
+uv run argus split
 
-uv run sastllm cluster --mode search
+uv run argus cluster --mode search
 # Review clustering reports and synchronize K in clustering.yaml and classification.yaml.
 
-uv run sastllm cluster --mode train
-uv run sastllm cluster --mode test
+uv run argus cluster --mode train
+uv run argus cluster --mode test
 
-uv run sastllm-inspect-distribution --repository-id 123
-uv run sastllm-inspect-timeseries --repository-id 123
+uv run argus-inspect-distribution --repository-id 123
+uv run argus-inspect-timeseries --repository-id 123
 
-uv run sastllm classify --mode search
+uv run argus classify --mode search
 # Copy the selected search parameters into classification.train.params.
 
-uv run sastllm classify --mode train
+uv run argus classify --mode train
 # Point classification.test.load_model_dir to the newly trained model directory.
 
-uv run sastllm classify --mode test
+uv run argus classify --mode test
 ```
 
 ## Prepared-data sequence
@@ -394,17 +390,17 @@ uv run sastllm classify --mode test
 When PostgreSQL already contains processed functionalities, Qdrant already contains split embeddings, and K is already validated:
 
 ```bash
-uv run sastllm cluster --mode train
-uv run sastllm cluster --mode test
-uv run sastllm classify --mode train
-uv run sastllm classify --mode test
+uv run argus cluster --mode train
+uv run argus cluster --mode test
+uv run argus classify --mode train
+uv run argus classify --mode test
 ```
 
 After all paths and parameters are finalized, the wrappers provide the same final-stage sequence:
 
 ```bash
-uv run sastllm train
-uv run sastllm test
+uv run argus train
+uv run argus test
 ```
 
 The wrappers do not run loading, functionality generation, embedding, splitting, clustering search, encoding inspection, or classification search.
@@ -413,18 +409,18 @@ The wrappers do not run loading, functionality generation, embedding, splitting,
 
 Do not move to the next stage until the current checkpoint passes:
 
-| Checkpoint | Required evidence |
-| --- | --- |
-| ingestion | repository, file, and snippet counts are non-zero |
-| functionality generation | processed repositories and populated functionality tags |
-| embedding | Qdrant collection exists with expected point count |
-| splitting | PostgreSQL and Qdrant both contain train/test assignments |
-| K selection | candidate report, quality plot, rationale, and accepted K |
-| clustering | trained model, full quality report, and ids for both splits |
-| encoding | inspected distribution and ordered sequence are consistent |
-| classifier search | selected validation result and recorded hyperparameters |
-| classifier train | best checkpoint and train metrics |
-| final test | test predictions and metrics from the frozen checkpoint |
+| Checkpoint               | Required evidence                                           |
+| ------------------------ | ----------------------------------------------------------- |
+| ingestion                | repository, file, and snippet counts are non-zero           |
+| functionality generation | processed repositories and populated functionality tags     |
+| embedding                | Qdrant collection exists with expected point count          |
+| splitting                | PostgreSQL and Qdrant both contain train/test assignments   |
+| K selection              | candidate report, quality plot, rationale, and accepted K   |
+| clustering               | trained model, full quality report, and ids for both splits |
+| encoding                 | inspected distribution and ordered sequence are consistent  |
+| classifier search        | selected validation result and recorded hyperparameters     |
+| classifier train         | best checkpoint and train metrics                           |
+| final test               | test predictions and metrics from the frozen checkpoint     |
 
 ## Reproducibility record
 
