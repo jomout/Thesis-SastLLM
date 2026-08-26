@@ -5,33 +5,33 @@ This stage converts clustered functionality ids into repository-level vectors an
 ## CLI entrypoints
 
 ```bash
-sastllm classify --mode search
-sastllm classify --mode train
-sastllm classify --mode test
-sastllm-inspect-distribution --repository-id <id>
-sastllm-inspect-timeseries --repository-id <id>
-sastllm train
-sastllm test
+argus classify --mode search
+argus classify --mode train
+argus classify --mode test
+argus-inspect-distribution --repository-id <id>
+argus-inspect-timeseries --repository-id <id>
+argus train
+argus test
 ```
 
 Implementation paths:
 
 - Pipeline wrapper: `src/scripts/pipelines.py::classify_repositories`
-- Classification service: `src/sastllm/classification/service.py::RepositoryClassificationService`
-- Classification config: `src/sastllm/classification/config.py`
-- Repository encoders: `src/sastllm/classification/encoders.py`
-- Dataset assembly: `src/sastllm/classification/data.py`
-- Metrics: `src/sastllm/classification/metrics.py`
+- Classification service: `src/argus/classification/service.py::RepositoryClassificationService`
+- Classification config: `src/argus/classification/config.py`
+- Repository encoders: `src/argus/classification/encoders.py`
+- Dataset assembly: `src/argus/classification/data.py`
+- Metrics: `src/argus/classification/metrics.py`
 - Inspection scripts: `src/scripts/inspect_repository_distribution_encoding.py`, `src/scripts/inspect_repository_timeseries_encoding.py`
-- ML datasets/training/models: `src/sastllm/ml/datasets.py`, `src/sastllm/ml/training.py`, `src/sastllm/ml/models/`
+- ML datasets/training/models: `src/argus/ml/datasets.py`, `src/argus/ml/training.py`, `src/argus/ml/models/`
 
 ## High-level wrappers
 
 The high-level wrappers are compact aliases:
 
 ```text
-sastllm train -> cluster --mode train -> classify --mode train
-sastllm test  -> cluster --mode test  -> classify --mode test
+argus train -> cluster --mode train -> classify --mode train
+argus test  -> cluster --mode test  -> classify --mode test
 ```
 
 They do not load data, split data, generate functionalities, or create embeddings.
@@ -202,12 +202,12 @@ Unknown or misplaced model fields fail during configuration loading instead of b
 
 Supported model names:
 
-| Name | Input encoding | Implementation |
-| --- | --- | --- |
-| `mlp` | `ClusterDistributionEncoder`, shape `[repositories, k]` | `src/sastllm/ml/models/mlp.py` |
-| `lstm` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/lstm.py` |
-| `transformer` with `ordered_tokens` | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/sastllm/ml/models/transformer.py` |
-| `transformer` with `cluster_distribution` | `ClusterDistributionEncoder`, shape `[repositories, k]` | `src/sastllm/ml/models/transformer.py` |
+| Name                                      | Input encoding                                                                | Implementation                         |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| `mlp`                                     | `ClusterDistributionEncoder`, shape `[repositories, k]`                       | `src/argus/ml/models/mlp.py`         |
+| `lstm`                                    | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/argus/ml/models/lstm.py`        |
+| `transformer` with `ordered_tokens`       | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/argus/ml/models/transformer.py` |
+| `transformer` with `cluster_distribution` | `ClusterDistributionEncoder`, shape `[repositories, k]`                       | `src/argus/ml/models/transformer.py` |
 
 `RepositoryClassificationService` automatically chooses the encoder from the model profile unless an encoder is injected explicitly. LSTM always uses ordered tokens. Transformer uses the encoder selected by `models.transformer.input_encoding`.
 
@@ -330,8 +330,8 @@ Two scripts inspect a single repository from PostgreSQL, print its files/snippet
 Distribution encoder:
 
 ```bash
-sastllm-inspect-distribution --repository-id 123
-sastllm-inspect-distribution --repository-name owner/repo
+argus-inspect-distribution --repository-id 123
+argus-inspect-distribution --repository-name owner/repo
 ```
 
 This prints:
@@ -345,8 +345,8 @@ This prints:
 Time-series encoder:
 
 ```bash
-sastllm-inspect-timeseries --repository-id 123
-sastllm-inspect-timeseries --repository-name owner/repo
+argus-inspect-timeseries --repository-id 123
+argus-inspect-timeseries --repository-name owner/repo
 ```
 
 This prints:
@@ -439,15 +439,15 @@ Predictions are stored as:
 
 ## Output files
 
-| File | Meaning |
-| --- | --- |
-| `best.ckpt` | saved Lightning checkpoint |
-| `config.json` | serialized classifier config |
-| `meta.json` | save timestamp, source checkpoint, monitored metric |
-| `train_predictions.json` | optional persisted train predictions |
-| `train_metrics.json` | train evaluation metrics |
-| `test_predictions.json` | test predictions |
-| `test_metrics.json` | test evaluation metrics |
+| File                     | Meaning                                             |
+| ------------------------ | --------------------------------------------------- |
+| `best.ckpt`              | saved Lightning checkpoint                          |
+| `config.json`            | serialized classifier config                        |
+| `meta.json`              | save timestamp, source checkpoint, monitored metric |
+| `train_predictions.json` | optional persisted train predictions                |
+| `train_metrics.json`     | train evaluation metrics                            |
+| `test_predictions.json`  | test predictions                                    |
+| `test_metrics.json`      | test evaluation metrics                             |
 
 ## Common failure points
 

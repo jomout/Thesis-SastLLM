@@ -7,12 +7,12 @@ This document describes local setup for the SAST-LLM thesis project.
 The package currently declares:
 
 ```toml
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 ```
 
 Recommended local tools:
 
-- Python 3.13 or newer
+- Python 3.14 or newer
 - `uv` or `pip`
 - Docker and Docker Compose for PostgreSQL and Qdrant
 - API credentials for the configured LLM provider
@@ -22,7 +22,7 @@ Recommended local tools:
 Create and activate a virtual environment:
 
 ```bash
-python3.13 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -42,14 +42,14 @@ pip install -e ".[dev]"
 The CLI entrypoint is:
 
 ```bash
-sastllm
+argus
 ```
 
 It is defined in `pyproject.toml` as:
 
 ```toml
 [project.scripts]
-sastllm = "scripts.cli:main"
+argus = "scripts.cli:main"
 ```
 
 ## Runtime services
@@ -62,10 +62,10 @@ docker compose up -d
 
 Services:
 
-| Service | Purpose |
-| --- | --- |
-| `code_database` | PostgreSQL relational store |
-| `code_embeddings` | Qdrant vector store |
+| Service           | Purpose                     |
+| ----------------- | --------------------------- |
+| `code_database`   | PostgreSQL relational store |
+| `code_embeddings` | Qdrant vector store         |
 
 The current Compose file mounts a database backup SQL file on first initialization. The schema files under `database/` are also available as reference:
 
@@ -124,7 +124,7 @@ If you need GPU training, install a PyTorch build that matches your CUDA/runtime
 Check CLI availability:
 
 ```bash
-sastllm --help
+argus --help
 ```
 
 Check services:

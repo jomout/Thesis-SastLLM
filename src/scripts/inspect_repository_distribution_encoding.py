@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from sastllm.classification.encoders import ClusterDistributionEncoder
+from argus.classification.encoders import ClusterDistributionEncoder
 
 from .inspection_common import (
     add_repository_selector,

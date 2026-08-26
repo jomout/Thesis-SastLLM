@@ -12,11 +12,11 @@ Current content:
 
 ```yaml
 app:
-  name: sastllm
+  name: argus
 
 log:
   level: INFO
-  file: logs/sastllm.log
+  file: logs/argus.log
   file_level: DEBUG
   max_bytes: 10485760
   backup_count: 5
@@ -28,7 +28,7 @@ paths:
 Used by:
 
 - logging setup
-- `sastllm load`
+- `argus load`
 
 `level` controls the structured console threshold. `file_level` controls the rotating JSON-lines file independently. `max_bytes` and `backup_count` bound retained log volume. Use `INFO` on the console and `DEBUG` in the file for normal experiments; temporarily set the console to `DEBUG` when investigating batch, parser, encoder-shape, or storage behavior.
 
@@ -38,7 +38,7 @@ Current content:
 
 ```yaml
 app:
-  name: sastllm
+  name: argus
 
 models:
   snippet_processor:
@@ -53,7 +53,7 @@ models:
 
 Used by:
 
-- `sastllm generate_functionalities`
+- `argus generate_functionalities`
 
 Only `snippet_processor` is accepted by the current `get_model()` factory.
 
@@ -117,9 +117,9 @@ clustering:
 
 Used by:
 
-- `sastllm cluster --mode search`
-- `sastllm cluster --mode train`
-- `sastllm cluster --mode test`
+- `argus cluster --mode search`
+- `argus cluster --mode train`
+- `argus cluster --mode test`
 
 Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation.
 
@@ -181,9 +181,9 @@ classification:
 
 Used by:
 
-- `sastllm classify --mode search`
-- `sastllm classify --mode train`
-- `sastllm classify --mode test`
+- `argus classify --mode search`
+- `argus classify --mode train`
+- `argus classify --mode test`
 
 Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 

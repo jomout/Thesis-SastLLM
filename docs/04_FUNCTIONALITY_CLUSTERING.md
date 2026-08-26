@@ -7,19 +7,19 @@ For the step-by-step experimental workflow and interpretation checklist, see [08
 ## CLI entrypoint
 
 ```bash
-sastllm cluster --mode search
-sastllm cluster --mode train
-sastllm cluster --mode test
+argus cluster --mode search
+argus cluster --mode train
+argus cluster --mode test
 ```
 
 Implementation paths:
 
 - Pipeline wrapper: `src/scripts/pipelines.py::cluster_functionalities`
-- Stage service: `src/sastllm/clustering/service.py::FunctionalityClusteringService`
-- Config parser: `src/sastllm/clustering/config.py`
-- Qdrant source adapter: `src/sastllm/clustering/sources.py`
-- Clustering model: `src/sastllm/clustering/kmeans.py::MiniBatchKMeansClusterer`
-- Embedding source: `src/sastllm/db/managers/embeddings_manager.py`
+- Stage service: `src/argus/clustering/service.py::FunctionalityClusteringService`
+- Config parser: `src/argus/clustering/config.py`
+- Qdrant source adapter: `src/argus/clustering/sources.py`
+- Clustering model: `src/argus/clustering/kmeans.py::MiniBatchKMeansClusterer`
+- Embedding source: `src/argus/db/managers/embeddings_manager.py`
 
 ## Input
 
@@ -31,10 +31,10 @@ sentence-transformers_all-mpnet-base-v2
 
 The train/test source is filtered by Qdrant payload:
 
-| Mode | Qdrant payload filter |
-| --- | --- |
-| `train` | `split == "train"` |
-| `test` | `split == "test"` |
+| Mode     | Qdrant payload filter                       |
+| -------- | ------------------------------------------- |
+| `train`  | `split == "train"`                          |
+| `test`   | `split == "test"`                           |
 | `search` | no split filter; reads first `n` embeddings |
 
 Each yielded item is:
@@ -112,13 +112,13 @@ The previous fallback of selecting the lowest-inertia candidate was removed beca
 
 The evaluator reports complementary evidence rather than hiding it in one weighted score:
 
-| Metric | Meaning | Direction |
-| --- | --- | --- |
-| normalized inertia | mean squared point-to-assigned-centroid distance | lower is better |
-| cohesion RMS | root mean squared point-to-centroid distance | lower is better |
-| separation RMS | weighted centroid dispersion around the global centroid | higher is better |
-| Calinski-Harabasz | between-cluster dispersion relative to within-cluster dispersion | higher is better |
-| silhouette | sampled cohesion versus nearest-cluster separation | higher is better; range `[-1, 1]` |
+| Metric             | Meaning                                                          | Direction                         |
+| ------------------ | ---------------------------------------------------------------- | --------------------------------- |
+| normalized inertia | mean squared point-to-assigned-centroid distance                 | lower is better                   |
+| cohesion RMS       | root mean squared point-to-centroid distance                     | lower is better                   |
+| separation RMS     | weighted centroid dispersion around the global centroid          | higher is better                  |
+| Calinski-Harabasz  | between-cluster dispersion relative to within-cluster dispersion | higher is better                  |
+| silhouette         | sampled cohesion versus nearest-cluster separation               | higher is better; range `[-1, 1]` |
 
 Euclidean silhouette is used because the current MiniBatchKMeans objective is Euclidean. Embeddings are L2-normalized before both fitting and evaluation.
 
@@ -182,13 +182,13 @@ No new model is trained in test mode.
 
 ## Output
 
-| Destination | Content |
-| --- | --- |
-| `functionalities.cluster_id` | integer cluster id assigned to each functionality |
-| `models/clustering/.../*.joblib` | trained MiniBatchKMeans model |
-| `models/clustering/.../*_quality.json` | full selected/final quality reports and per-cluster statistics |
+| Destination                                                                                    | Content                                                                     |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `functionalities.cluster_id`                                                                   | integer cluster id assigned to each functionality                           |
+| `models/clustering/.../*.joblib`                                                               | trained MiniBatchKMeans model                                               |
+| `models/clustering/.../*_quality.json`                                                         | full selected/final quality reports and per-cluster statistics              |
 | `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | search model, candidate metrics, selection rationale, CSV, and quality plot |
-| `models/clustering/trained_models/clusterer_<k>_<timestamp>/` | trained model and full quality report |
+| `models/clustering/trained_models/clusterer_<k>_<timestamp>/`                                  | trained model and full quality report                                       |
 
 ## Downstream contract
 

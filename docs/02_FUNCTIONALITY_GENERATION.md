@@ -7,40 +7,40 @@ This stage turns code snippets into normalized natural-language functionality ta
 Online LLM generation:
 
 ```bash
-sastllm generate_functionalities
+argus generate_functionalities
 ```
 
 OpenAI Batch API generation:
 
 ```bash
-sastllm generate_functionalities_batch_api
+argus generate_functionalities_batch_api
 ```
 
 Cached functionality import:
 
 ```bash
-sastllm load_cache_functionalities /path/to/cached_functionalities
+argus load_cache_functionalities /path/to/cached_functionalities
 ```
 
 Implementation paths:
 
-- Online processor: `src/sastllm/processors/snippet_processor.py`
-- Prompt formatter: `src/sastllm/prompt/functionality_prompt_generator.py`
-- LLM analyzer: `src/sastllm/analyzers/functionality_analyzer.py`
-- Batch file generator: `src/sastllm/processors/batch_files_generator.py`
-- Batch submitter/downloader: `src/sastllm/processors/batch_file_processor.py`
+- Online processor: `src/argus/processors/snippet_processor.py`
+- Prompt formatter: `src/argus/prompt/functionality_prompt_generator.py`
+- LLM analyzer: `src/argus/analyzers/functionality_analyzer.py`
+- Batch file generator: `src/argus/processors/batch_files_generator.py`
+- Batch submitter/downloader: `src/argus/processors/batch_file_processor.py`
 - LLM factory: `src/scripts/utils.py::get_model`
 
 ## Online generation flow
 
 `generate_functionalities()` creates the configured `snippet_processor` LLM, then runs `SnippetProcessor` with:
 
-| Setting | Current value |
-| --- | --- |
-| Batch size | `50` snippets |
-| Sleep between batches | `5` seconds |
-| Retry attempts for LLM call | `1000` |
-| Initial retry delay | `1` second |
+| Setting                     | Current value |
+| --------------------------- | ------------- |
+| Batch size                  | `50` snippets |
+| Sleep between batches       | `5` seconds   |
+| Retry attempts for LLM call | `1000`        |
+| Initial retry delay         | `1` second    |
 
 The flow is:
 
@@ -101,7 +101,7 @@ Special handling:
 Each description is stored twice:
 
 - `description`: raw LLM functionality sentence
-- `tag`: normalized text from `sastllm.utils.Normalizer`
+- `tag`: normalized text from `argus.utils.Normalizer`
 
 The tag is what later stages embed and cluster.
 
@@ -142,21 +142,21 @@ models:
 
 Supported hosts in the factory are:
 
-| Host | Implementation |
-| --- | --- |
-| `google` | `ChatGoogleGenerativeAI` |
-| `openai` | `OpenAI` from `langchain_openai` |
-| `issel` | local `CustomLLM` using `ENDPOINT_URL` and `ACCESS_TOKEN` |
+| Host     | Implementation                                            |
+| -------- | --------------------------------------------------------- |
+| `google` | `ChatGoogleGenerativeAI`                                  |
+| `openai` | `OpenAI` from `langchain_openai`                          |
+| `issel`  | local `CustomLLM` using `ENDPOINT_URL` and `ACCESS_TOKEN` |
 
 ## Outputs
 
-| Destination | Content |
-| --- | --- |
-| `functionalities.description` | raw functionality sentence |
-| `functionalities.tag` | normalized text used for embeddings |
-| `functionalities.cluster_id` | initially `NULL` |
-| `snippets.processed` | set to `true` after processing |
-| `cache/functionalities-<llm_type>/` | debugging/import cache |
+| Destination                         | Content                             |
+| ----------------------------------- | ----------------------------------- |
+| `functionalities.description`       | raw functionality sentence          |
+| `functionalities.tag`               | normalized text used for embeddings |
+| `functionalities.cluster_id`        | initially `NULL`                    |
+| `snippets.processed`                | set to `true` after processing      |
+| `cache/functionalities-<llm_type>/` | debugging/import cache              |
 
 ## Failure behavior
 

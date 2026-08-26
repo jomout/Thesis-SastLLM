@@ -2,22 +2,22 @@ import glob
 import json
 import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
-from sastllm.classification import ClassificationConfig, RepositoryClassificationService
-from sastllm.clustering import FunctionalityClusteringService
-from sastllm.configs import get_logger
-from sastllm.db import FunctionalityManager, SnippetManager
-from sastllm.dtos import CreateFunctionalityDto
-from sastllm.dtos.update_dtos import UpdateSnippetDto
-from sastllm.processors import (
+from argus.classification import ClassificationConfig, RepositoryClassificationService
+from argus.clustering import FunctionalityClusteringService
+from argus.configs import get_logger
+from argus.db import FunctionalityManager, SnippetManager
+from argus.dtos import CreateFunctionalityDto
+from argus.dtos.update_dtos import UpdateSnippetDto
+from argus.processors import (
     BatchFileProcessor,
     BatchFilesGenerator,
     CodeProcessor,
     SnippetProcessor,
 )
-from sastllm.utils.dataset_splitter import DatasetSplitter
-from sastllm.utils.observability import log_duration
+from argus.utils.dataset_splitter import DatasetSplitter
+from argus.utils.observability import log_duration
 
 from .utils import get_model, load_yaml
 
@@ -32,23 +32,23 @@ def load_dataset() -> None:
         config = load_yaml()
 
         # Load dataset
-        sastllm_dataset: Optional[str] = config.get("paths", {}).get("dataset")
+        dataset: str | None = config.get("paths", {}).get("dataset")
 
-        if not sastllm_dataset:
+        if not dataset:
             msg = "`paths.dataset` is not defined in the YAML config."
-            logger.error(msg)
+            logger.exception(msg)
             raise ValueError(msg)
 
-        logger.info("Loading dataset", dataset_path=sastllm_dataset)
+        logger.info("Loading dataset", dataset_path=dataset)
 
         loader = CodeProcessor(
-            root_path=sastllm_dataset,
+            root_path=dataset,
         )
-        with log_duration(logger, "dataset_load", dataset_path=sastllm_dataset):
+        with log_duration(logger, "dataset_load", dataset_path=dataset):
             loader.run()
 
     except Exception as e:
-        logger.error("Dataset loading failed", error=str(e), exc_info=True)
+        logger.exception("Dataset loading failed", error=str(e))
         raise RuntimeError(f"Dataset loading failed: {e}") from e
 
 
@@ -89,7 +89,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
         with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):
             processor.run(mode=mode)
     except Exception as e:
-        logger.error("Functionality clustering failed", mode=mode, error=str(e), exc_info=True)
+        logger.exception("Functionality clustering failed", mode=mode, error=str(e))
         raise RuntimeError(f"Functionality clustering failed: {e}") from e
 
 
@@ -134,7 +134,7 @@ def generate_functionalities() -> None:
         with log_duration(logger, "functionality_generation", batch_size=processor.batch_size, sleep_interval=processor.sleep_interval):
             processor.run()
     except Exception as e:
-        logger.error("Functionality generation failed", error=str(e), exc_info=True)
+        logger.exception("Functionality generation failed", error=str(e))
         raise RuntimeError(f"Functionality generation failed: {e}") from e
 
 
@@ -172,7 +172,7 @@ def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
                 service.evaluate(split="test")
 
     except Exception as e:
-        logger.error("Repository classification failed", mode=mode, error=str(e), exc_info=True)
+        logger.exception("Repository classification failed", mode=mode, error=str(e))
         raise RuntimeError(f"Repository classification failed: {e}") from e
 
 
@@ -190,8 +190,8 @@ def test_pipeline() -> None:
 
 def load_functionalities_from_dir(directory: str) -> None:
     """Load all JSON files from a directory into Pydantic DTOs."""
-    all_functionalities: List[CreateFunctionalityDto] = []
-    all_snippets: List[UpdateSnippetDto] = []
+    all_functionalities: list[CreateFunctionalityDto] = []
+    all_snippets: list[UpdateSnippetDto] = []
     for file_path in glob.glob(f"{directory}/*.json"):
         with open(file_path, "r", encoding="utf-8") as f:
             filename = os.path.basename(file_path)

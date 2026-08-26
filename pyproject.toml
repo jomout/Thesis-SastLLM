@@ -3,11 +3,28 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "thesis-sastllm"
-version = "0.1.0"
-description = "..."
+name = "argus"
+version = "1.0.0"
+description = "Automated Recognition and Guarding against Untrusted Source code using LLM-assisted static analysis"
 readme = "README.md"
 requires-python = ">=3.14"
+
+keywords = [
+    "malicious-code-detection",
+    "static-analysis",
+    "large-language-models",
+    "machine-learning",
+    "cybersecurity",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+]
+
 dependencies = [
     "dotenv==0.9.9",
     "kneed==0.8.6",
@@ -49,13 +66,9 @@ exclude-newer = "1 days"
 [tool.ruff]
 line-length = 200
 target-version = "py314"
-exclude = [
-    "build",
-    "dist",
-    "qdrant_storage",
-    "models/trained_models",
-    "**/migrations/**",
-]
+include = ["src/**/*.py"]
+
+[tool.ruff.lint]
 extend-select = ["E", "F", "I"]
 ignore = ["E203"]
 
@@ -67,9 +80,9 @@ docstring-code-format = true
 line-ending = "lf"
 
 [project.scripts]
-sastllm = "scripts.cli:main"
-sastllm-inspect-distribution = "scripts.inspect_repository_distribution_encoding:main"
-sastllm-inspect-timeseries = "scripts.inspect_repository_timeseries_encoding:main"
+argus = "scripts.cli:main"
+argus-inspect-distribution = "scripts.inspect_repository_distribution_encoding:main"
+argus-inspect-timeseries = "scripts.inspect_repository_timeseries_encoding:main"
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
@@ -87,7 +100,7 @@ explicit = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["sastllm*", "scripts*"]
+include = ["argus*", "scripts*"]
 exclude = ["tests*", "evaluations*", "examples*"]
 
 [tool.pyright]

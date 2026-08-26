@@ -6,16 +6,16 @@ This document is the short configuration overview. For the full field-by-field r
 
 Configuration lives under `configs/`:
 
-| File | Role |
-| --- | --- |
-| `base.yaml` | app name, logging, dataset path |
-| `llms.yaml` | LLM provider and model for snippet functionality generation |
-| `split.yaml` | embedding model, train/test ratios, binary labels |
-| `clustering.yaml` | clustering search/train/test parameters |
-| `classification.yaml` | classifier train/test directories and hyperparameters |
-| `languages.yaml` | Tree-sitter grammar sources and supported suffixes |
-| `important_nodes.yaml` | AST node types used as chunking breakpoints |
-| `comment_nodes.yaml` | comment/decorator node types |
+| File                   | Role                                                        |
+| ---------------------- | ----------------------------------------------------------- |
+| `base.yaml`            | app name, logging, dataset path                             |
+| `llms.yaml`            | LLM provider and model for snippet functionality generation |
+| `split.yaml`           | embedding model, train/test ratios, binary labels           |
+| `clustering.yaml`      | clustering search/train/test parameters                     |
+| `classification.yaml`  | classifier train/test directories and hyperparameters       |
+| `languages.yaml`       | Tree-sitter grammar sources and supported suffixes          |
+| `important_nodes.yaml` | AST node types used as chunking breakpoints                 |
+| `comment_nodes.yaml`   | comment/decorator node types                                |
 
 ## Current core values
 
@@ -31,22 +31,22 @@ Logging:
 ```yaml
 log:
   level: INFO
-  file: logs/sastllm.log
+  file: logs/argus.log
   file_level: DEBUG
   max_bytes: 10485760
   backup_count: 5
 ```
 
-Console logs use `log.level`. The rotating JSON-lines file uses `log.file_level`, so the default setup keeps normal console output readable while retaining detailed debugging context in `logs/sastllm.log`.
+Console logs use `log.level`. The rotating JSON-lines file uses `log.file_level`, so the default setup keeps normal console output readable while retaining detailed debugging context in `logs/argus.log`.
 
 Log-level intent:
 
-| Level | Content |
-| --- | --- |
-| `DEBUG` | batch iteration, paths, shapes, parser details, and configuration loading |
-| `INFO` | pipeline lifecycle, model construction, data counts, metrics, and persisted artifacts |
+| Level     | Content                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `DEBUG`   | batch iteration, paths, shapes, parser details, and configuration loading                                           |
+| `INFO`    | pipeline lifecycle, model construction, data counts, metrics, and persisted artifacts                               |
 | `WARNING` | recoverable anomalies such as truncation, empty sequences, unreliable silhouette, or class-imbalance overcorrection |
-| `ERROR` | failed I/O, invalid operational state, unsupported configuration, and exceptions at pipeline boundaries |
+| `ERROR`   | failed I/O, invalid operational state, unsupported configuration, and exceptions at pipeline boundaries             |
 
 LLM:
 

@@ -23,11 +23,11 @@ No single metric proves that a K is correct. The pipeline therefore reports cohe
 
 ## Mode summary
 
-| Mode | Input | Purpose | Main side effects |
-| --- | --- | --- | --- |
-| `search` | first `n` vectors from the Qdrant collection | compare candidate K values and select one | writes candidate reports, plots, selected model, and final quality report |
-| `train` | Qdrant vectors with `split=train` | fit the chosen K and validate it on the full train stream | writes the trained model and train quality report; updates train functionality cluster ids in PostgreSQL |
-| `test` | Qdrant vectors with `split=test` | apply the frozen trained model | updates test functionality cluster ids in PostgreSQL |
+| Mode     | Input                                        | Purpose                                                   | Main side effects                                                                                        |
+| -------- | -------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `search` | first `n` vectors from the Qdrant collection | compare candidate K values and select one                 | writes candidate reports, plots, selected model, and final quality report                                |
+| `train`  | Qdrant vectors with `split=train`            | fit the chosen K and validate it on the full train stream | writes the trained model and train quality report; updates train functionality cluster ids in PostgreSQL |
+| `test`   | Qdrant vectors with `split=test`             | apply the frozen trained model                            | updates test functionality cluster ids in PostgreSQL                                                     |
 
 `test` does not fit a model or choose K.
 
@@ -48,14 +48,14 @@ sentence-transformers/all-mpnet-base-v2
   -> sentence-transformers_all-mpnet-base-v2
 ```
 
-Important: `uv run sastllm split` currently assigns split metadata but does not create missing embeddings because `embed_all_repositories()` is disabled in the command wrapper.
+Important: `uv run argus split` currently assigns split metadata but does not create missing embeddings because `embed_all_repositories()` is disabled in the command wrapper.
 
 Start and check the services:
 
 ```bash
 docker compose up -d
 docker compose ps
-uv run sastllm cluster --help
+uv run argus cluster --help
 ```
 
 ## Step 1: Configure the search
@@ -84,23 +84,23 @@ clustering:
 
 Parameter guidance:
 
-| Parameter | Research meaning |
-| --- | --- |
-| `grid_search` | population sizes to investigate; each value starts an independent search |
-| `min_samples_per_cluster` | limits the largest candidate to `n // min_samples_per_cluster` |
-| `num_k_candidates` | number of logarithmically spaced K values |
-| `sample_size` | fixed reservoir used to compare candidates and initialize models |
-| `silhouette_sample_size` | maximum rows used in the quadratic silhouette calculation |
-| `silhouette_samples_per_cluster` | target minimum representation of each selected silhouette cluster |
-| `elbow_window_factor` | limits automatic silhouette/CH selection to the inertia-elbow neighborhood |
-| `max_silhouette_singleton_fraction` | rejects silhouette evidence from an excessively fragmented reservoir |
+| Parameter                           | Research meaning                                                           |
+| ----------------------------------- | -------------------------------------------------------------------------- |
+| `grid_search`                       | population sizes to investigate; each value starts an independent search   |
+| `min_samples_per_cluster`           | limits the largest candidate to `n // min_samples_per_cluster`             |
+| `num_k_candidates`                  | number of logarithmically spaced K values                                  |
+| `sample_size`                       | fixed reservoir used to compare candidates and initialize models           |
+| `silhouette_sample_size`            | maximum rows used in the quadratic silhouette calculation                  |
+| `silhouette_samples_per_cluster`    | target minimum representation of each selected silhouette cluster          |
+| `elbow_window_factor`               | limits automatic silhouette/CH selection to the inertia-elbow neighborhood |
+| `max_silhouette_singleton_fraction` | rejects silhouette evidence from an excessively fragmented reservoir       |
 
 Keep `sample_size` comfortably above the expected K. The current `100000` supports the expected range around `K=10661`, while keeping the full dataset out of memory.
 
 ## Step 2: Run K search
 
 ```bash
-uv run sastllm cluster --mode search
+uv run argus cluster --mode search
 ```
 
 For each `n`, the command:
@@ -143,14 +143,14 @@ The JSON report records `selected_k`, `selection_reason`, `elbow_k`, `silhouette
 
 Treat automatic selection as a recommendation, not as the thesis conclusion. Review the CSV, JSON, and plot together.
 
-| Evidence | Desired behavior | Warning sign |
-| --- | --- | --- |
-| cohesion RMS | low relative to nearby candidates | little improvement despite rapidly increasing K |
-| separation RMS | high relative to nearby candidates | separation remains flat while K grows |
-| silhouette | highest reliable value near the elbow | negative/near-zero score or very low coverage |
-| Calinski-Harabasz | local maximum near selected K | best value occurs far from the elbow/silhouette result |
-| normalized inertia | clear diminishing-return elbow | choosing the largest K merely because inertia is lowest |
-| cluster sizes | few empty, singleton, or undersized clusters | many tiny clusters, indicating fragmentation |
+| Evidence           | Desired behavior                             | Warning sign                                            |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------- |
+| cohesion RMS       | low relative to nearby candidates            | little improvement despite rapidly increasing K         |
+| separation RMS     | high relative to nearby candidates           | separation remains flat while K grows                   |
+| silhouette         | highest reliable value near the elbow        | negative/near-zero score or very low coverage           |
+| Calinski-Harabasz  | local maximum near selected K                | best value occurs far from the elbow/silhouette result  |
+| normalized inertia | clear diminishing-return elbow               | choosing the largest K merely because inertia is lowest |
+| cluster sizes      | few empty, singleton, or undersized clusters | many tiny clusters, indicating fragmentation            |
 
 Silhouette interpretation is contextual:
 
@@ -197,7 +197,7 @@ The classifier feature dimension or token vocabulary depends on K. A mismatch ca
 ## Step 5: Train the final clusterer
 
 ```bash
-uv run sastllm cluster --mode train
+uv run argus cluster --mode train
 ```
 
 Expected behavior:
@@ -231,7 +231,7 @@ Inspect the train quality report before classification. Confirm that:
 Confirm that `test.load_model_file` points to the newly trained artifact, then run:
 
 ```bash
-uv run sastllm cluster --mode test
+uv run argus cluster --mode test
 ```
 
 Expected behavior:
@@ -248,15 +248,15 @@ Test mode currently writes assignments but does not produce a separate test qual
 Run classification explicitly so clustering results can be inspected between stages:
 
 ```bash
-uv run sastllm classify --mode train
-uv run sastllm classify --mode test
+uv run argus classify --mode train
+uv run argus classify --mode test
 ```
 
 The wrappers are available after configuration is finalized:
 
 ```bash
-uv run sastllm train
-uv run sastllm test
+uv run argus train
+uv run argus test
 ```
 
 They execute:
@@ -296,18 +296,18 @@ Running search again with the same `n` and output directories overwrites files w
 ```bash
 # Services and preconditions
 docker compose up -d
-uv run sastllm split
+uv run argus split
 
 # K selection and review
-uv run sastllm cluster --mode search
+uv run argus cluster --mode search
 
 # After synchronizing the accepted K in both YAML files
-uv run sastllm cluster --mode train
-uv run sastllm cluster --mode test
+uv run argus cluster --mode train
+uv run argus cluster --mode test
 
 # Downstream experiment
-uv run sastllm classify --mode train
-uv run sastllm classify --mode test
+uv run argus classify --mode train
+uv run argus classify --mode test
 ```
 
 Do not run `split` unless the embeddings already exist and PostgreSQL/Qdrant are ready to receive synchronized split metadata.

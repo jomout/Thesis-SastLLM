@@ -1,6 +1,6 @@
-# SASTLLM
+# ARGUS
 
-**SASTLLM** is a static malware analysis framework that transforms source code repositories into **semantic functionality representations** and classifies repositories based on their behavioral profile.
+**ARGUS** (**A**utomated **R**ecognition and **G**uarding against **U**ntrusted **S**ource code) is an LLM-assisted static malware analysis framework. It transforms source code repositories into **semantic functionality representations** and classifies them based on their behavioral profiles.
 
 At a high level, the framework:
 
@@ -26,7 +26,7 @@ This README provides the central overview of the project. More detailed document
 
 ## Core idea
 
-Instead of classifying repositories directly from raw source code, SASTLLM first maps code into an intermediate semantic space.
+Instead of classifying repositories directly from raw source code, ARGUS first maps code into an intermediate semantic space.
 
 More specifically:
 
@@ -196,31 +196,31 @@ If your local dataset uses different folder names or a different structure, adap
 Display the CLI help:
 
 ```bash
-sastllm --help
+argus --help
 ```
 
 Typical commands include:
 
 ```bash
-sastllm load
-sastllm split
-sastllm generate_functionalities
-sastllm cluster --mode train
-sastllm classify --mode train
-sastllm cluster --mode test
-sastllm classify --mode test
+argus load
+argus split
+argus generate_functionalities
+argus cluster --mode train
+argus classify --mode train
+argus cluster --mode test
+argus classify --mode test
 ```
 
 If batch-based functionality generation is preferred:
 
 ```bash
-sastllm generate_functionalities_batch_api
+argus generate_functionalities_batch_api
 ```
 
 If cached functionality descriptions already exist:
 
 ```bash
-sastllm load_cache_functionalities /path/to/cached_functionalities
+argus load_cache_functionalities /path/to/cached_functionalities
 ```
 
 See `docs/USAGE.md` for the full command reference and recommended workflows.
@@ -233,32 +233,32 @@ A standard end-to-end execution flow is:
 
 ```bash
 # 1. Load the dataset
-sastllm load
+argus load
 
 # 2. Generate snippet functionalities
-sastllm generate_functionalities
+argus generate_functionalities
 
 # 3. Ensure functionality embeddings exist in Qdrant, then split
-sastllm split
+argus split
 
 # 4. Train clustering
-sastllm cluster --mode train
+argus cluster --mode train
 
 # 5. Train classification
-sastllm classify --mode train
+argus classify --mode train
 
 # 6. Run clustering on the test setup
-sastllm cluster --mode test
+argus cluster --mode test
 
 # 7. Run classification on the test setup
-sastllm classify --mode test
+argus classify --mode test
 ```
 
 A shorter wrapper-based execution may also be available through:
 
 ```bash
-sastllm train
-sastllm test
+argus train
+argus test
 ```
 
 Current wrapper behavior is:
@@ -329,13 +329,13 @@ This replaces the outdated README command set such as `setup`, `eval`, and `clas
 - The current pipeline is centered on the four-phase thesis architecture rather than the older processor-centric description.
 - If you reuse cached functionality descriptions, make sure they are compatible with the current clustering and classification setup.
 - If you change the clustering dimensionality or the number of clusters, ensure that the classifier configuration remains consistent with that representation.
-- `sastllm split` currently assumes embeddings already exist in Qdrant; see `docs/03_EMBEDDING_AND_SPLITTING.md`.
+- `argus split` currently assumes embeddings already exist in Qdrant; see `docs/03_EMBEDDING_AND_SPLITTING.md`.
 
 ---
 
 ## Thesis positioning
 
-Within the thesis, SASTLLM is used as a framework for studying malware detection through **semantic behavioral abstraction**.
+Within the thesis, ARGUS is used as a framework for studying malware detection through **semantic behavioral abstraction**.
 
 Its main research idea is that:
 

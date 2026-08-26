@@ -1,17 +1,17 @@
 from os import getenv
 from pathlib import Path
-from typing import Dict, Literal, Tuple, Union
+from typing import Literal
 
 import yaml
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import OpenAI
 
-from sastllm.configs import get_logger
+from argus.configs import get_logger
 
 logger = get_logger(__name__)
 
 
-def load_yaml(config_path: Union[str, Path] = "configs/base.yaml") -> Dict:
+def load_yaml(config_path: str | Path = "configs/base.yaml") -> dict:
     """
     Load a YAML config file and return its contents as a dict.
 
@@ -20,7 +20,7 @@ def load_yaml(config_path: Union[str, Path] = "configs/base.yaml") -> Dict:
     """
     path = Path(config_path)
     if not path.exists():
-        logger.error("Configuration file was not found", path=str(path))
+        logger.exception("Configuration file was not found", path=str(path))
         raise FileNotFoundError(f"Config file not found: {path}")
 
     with path.open("r") as f:
@@ -36,7 +36,7 @@ def get_model(
         "cluster_processor",
         "repository_processor",
     ],
-    config_path: Union[str, Path] = "configs/llms.yaml",
+    config_path: str | Path = "configs/llms.yaml",
 ):
     """
     Load YAML and return an instantiated LangChain Chat model.
@@ -83,7 +83,7 @@ def get_model(
         # expects OPENAI_API_KEY to be available in the environment or configured globally
         return OpenAI(model=name)
     if host == "issel":
-        from sastllm.utils import CustomLLM
+        from argus.utils import CustomLLM
 
         endpoint_url = getenv("ENDPOINT_URL", "")
         access_token = getenv("ACCESS_TOKEN", "")
@@ -91,14 +91,14 @@ def get_model(
             raise ValueError(f"'models.{processor}.params' must include 'endpoint_url' and 'access_token' for host 'issel'.")
         return CustomLLM(endpoint_url=endpoint_url, access_token=access_token)
 
-    logger.error("Unsupported configured LLM host", processor=processor, host=host)
+    logger.exception("Unsupported configured LLM host", processor=processor, host=host)
     raise ValueError(f"Unsupported LLM host: {host!r}. Supported: 'google', 'openai', 'issel'.")
 
 
 def get_classification_config(
     mode: Literal["train", "test"],
-    config_path: Union[str, Path] = "configs/classification.yaml",
-) -> Tuple[Union[str, Path], Dict]:
+    config_path: str | Path = "configs/classification.yaml",
+) -> tuple[str | Path, dict]:
     MODES = {"train", "test"}
 
     if mode not in MODES:

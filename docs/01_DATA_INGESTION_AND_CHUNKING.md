@@ -5,16 +5,16 @@ This stage converts a local repository dataset into database records: repositori
 ## CLI entrypoint
 
 ```bash
-sastllm load
+argus load
 ```
 
 Implementation path:
 
 - CLI command: `src/scripts/cli.py`
 - Pipeline wrapper: `src/scripts/pipelines.py::load_dataset`
-- Main processor: `src/sastllm/processors/code_processor.py::CodeProcessor`
-- Chunker: `src/sastllm/parsers/code_chunker.py::CodeChunker`
-- Parser helpers: `src/sastllm/parsers/code_parser.py`, `comment_stripper.py`, `tree_sitter_generator.py`
+- Main processor: `src/argus/processors/code_processor.py::CodeProcessor`
+- Chunker: `src/argus/parsers/code_chunker.py::CodeChunker`
+- Parser helpers: `src/argus/parsers/code_parser.py`, `comment_stripper.py`, `tree_sitter_generator.py`
 
 ## Input
 
@@ -46,18 +46,18 @@ The first path component below the dataset root becomes the repository label. Th
 
 `CodeProcessor` loads supported suffixes from `configs/languages.yaml`. Each suffix maps to an internal Tree-sitter language name. Examples:
 
-| Suffix | Language |
-| --- | --- |
-| `.py` | `python` |
-| `.c`, `.h` | `c` |
-| `.cpp`, `.hpp` | `cpp` |
-| `.js`, `.jsx` | `javascript` |
-| `.ts` | `typescript` |
-| `.tsx` | `tsx` |
-| `.java` | `java` |
-| `.rs` | `rust` |
-| `.go` | `go` |
-| `.sh`, `.bash` | `bash` |
+| Suffix         | Language     |
+| -------------- | ------------ |
+| `.py`          | `python`     |
+| `.c`, `.h`     | `c`          |
+| `.cpp`, `.hpp` | `cpp`        |
+| `.js`, `.jsx`  | `javascript` |
+| `.ts`          | `typescript` |
+| `.tsx`         | `tsx`        |
+| `.java`        | `java`       |
+| `.rs`          | `rust`       |
+| `.go`          | `go`         |
+| `.sh`, `.bash` | `bash`       |
 
 Files whose names start with `._` are skipped.
 
@@ -81,10 +81,10 @@ This cleanup is mainly there to keep PostgreSQL inserts stable and reduce noisy 
 
 Important defaults:
 
-| Setting | Value |
-| --- | --- |
-| Encoding | `cl100k_base` |
-| Token budget | `100` tokens |
+| Setting                     | Value                              |
+| --------------------------- | ---------------------------------- |
+| Encoding                    | `cl100k_base`                      |
+| Token budget                | `100` tokens                       |
 | Comment removal during load | enabled via `remove_comments=True` |
 
 The chunker uses Tree-sitter to find important node start lines. Important nodes come from `configs/important_nodes.yaml`; comment/decorator nodes come from `configs/comment_nodes.yaml`.
@@ -119,15 +119,15 @@ Snippet insertion uses a bulk insert first and falls back to individual inserts 
 
 ## Output tables
 
-| Table | Output |
-| --- | --- |
-| `repositories` | repository name, label, split, processed flag |
-| `files` | language, filename, relative filepath, repository link |
-| `snippets` | chunk code, source line range, processed flag |
+| Table          | Output                                                 |
+| -------------- | ------------------------------------------------------ |
+| `repositories` | repository name, label, split, processed flag          |
+| `files`        | language, filename, relative filepath, repository link |
+| `snippets`     | chunk code, source line range, processed flag          |
 
 ## Operational notes
 
-- Re-running `sastllm load` can create duplicate file/snippet rows unless the database has been cleaned or deduplicated externally.
+- Re-running `argus load` can create duplicate file/snippet rows unless the database has been cleaned or deduplicated externally.
 - Repository identity is based on repository name, not full path.
 - `processed` flags are updated by database triggers once snippet processing progresses.
 - Language support depends on Tree-sitter grammar availability and the YAML node mappings.

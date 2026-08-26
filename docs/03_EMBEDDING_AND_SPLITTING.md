@@ -5,15 +5,15 @@ This stage manages repository train/test assignment and Qdrant payload metadata 
 ## CLI entrypoint
 
 ```bash
-sastllm split
+argus split
 ```
 
 Implementation paths:
 
 - Pipeline wrapper: `src/scripts/pipelines.py::split_dataset`
-- Splitter: `src/sastllm/utils/dataset_splitter.py::DatasetSplitter`
-- Embedder: `src/sastllm/cluster/embedder.py::Embedder`
-- Qdrant access: `src/sastllm/db/managers/embeddings_manager.py`
+- Splitter: `src/argus/utils/dataset_splitter.py::DatasetSplitter`
+- Embedder: `src/argus/cluster/embedder.py::Embedder`
+- Qdrant access: `src/argus/db/managers/embeddings_manager.py`
 
 ## Current command behavior
 
@@ -23,7 +23,7 @@ The current `split_dataset()` implementation reads `configs/split.yaml`, constru
 database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 ```
 
-The call to `embed_all_repositories()` exists but is currently commented out in the pipeline wrapper. This means `sastllm split` updates split labels in PostgreSQL and Qdrant payloads, but it assumes the Qdrant collection and functionality embeddings already exist.
+The call to `embed_all_repositories()` exists but is currently commented out in the pipeline wrapper. This means `argus split` updates split labels in PostgreSQL and Qdrant payloads, but it assumes the Qdrant collection and functionality embeddings already exist.
 
 ## Split configuration
 
@@ -86,13 +86,13 @@ The embedder uses `SentenceTransformer` and checks existing Qdrant ids to avoid 
 
 Each functionality embedding is stored as one Qdrant point:
 
-| Qdrant field | Meaning |
-| --- | --- |
-| point id | `functionality_id` |
-| vector | embedding of `functionalities.tag` |
+| Qdrant field            | Meaning                                |
+| ----------------------- | -------------------------------------- |
+| point id                | `functionality_id`                     |
+| vector                  | embedding of `functionalities.tag`     |
 | `repository_id` payload | repository that owns the functionality |
-| `split` payload | `full`, `train`, or `test` |
-| `tag` payload | normalized functionality tag |
+| `split` payload         | `full`, `train`, or `test`             |
+| `tag` payload           | normalized functionality tag           |
 
 Distance is cosine similarity.
 
