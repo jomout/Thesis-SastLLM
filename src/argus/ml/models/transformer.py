@@ -100,8 +100,8 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
         padding_mask = ~valid_steps
 
         # PyTorch attention cannot safely consume a row where every token is masked.
-        safe_padding_mask = padding_mask.clone()
-        safe_padding_mask[~has_valid_steps, 0] = False
+        safe_first_step = padding_mask[:, :1] & has_valid_steps.unsqueeze(1)
+        safe_padding_mask = torch.cat((safe_first_step, padding_mask[:, 1:]), dim=1)
 
         encoded = self.encoder(sequence, src_key_padding_mask=safe_padding_mask)
         encoded = self.output_norm(encoded)
@@ -130,7 +130,10 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
     def _embed_cluster_distribution(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.size(1) != self.input_dim:
             raise ValueError(f"Expected cluster-distribution input shape (N, {self.input_dim}), got {tuple(x.shape)}.")
-        if torch.any(x < 0):
+        # Tensor-dependent Python control flow cannot be captured by torch.export.
+        # Encoders enforce this contract before ONNX inference; retain the eager-mode
+        # validation for direct PyTorch callers.
+        if not torch.compiler.is_compiling() and torch.any(x < 0):
             raise ValueError("Cluster-distribution features must be non-negative.")
         if self.cluster_embedding is None or self.frequency_projection is None:
             raise RuntimeError("Cluster-distribution input layers are not initialized.")

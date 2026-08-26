@@ -8,7 +8,7 @@ from argus.db import FunctionalityManager
 from argus.dtos.update_dtos import UpdateFunctionalityDto
 from argus.utils.observability import log_duration
 
-from .artifacts import search_artifacts, training_artifacts
+from .artifacts import CLUSTERER_JOBLIB_FILENAME, search_artifacts, training_artifacts
 from .config import ClusteringConfig, ClusteringMode
 from .evaluation import ClusterQualityEvaluator
 from .kmeans import ClusterAssignmentBatch, MiniBatchKMeansClusterer
@@ -28,12 +28,14 @@ class FunctionalityClusteringService:
         self,
         *,
         collection_name: str,
+        embedding_model_name: str | None = None,
         config: ClusteringConfig | None = None,
         config_path: str | Path = "configs/clustering.yaml",
         embedding_repository: QdrantEmbeddingRepository | None = None,
         functionality_manager: FunctionalityManager | None = None,
     ) -> None:
         self.collection_name = collection_name
+        self.embedding_model_name = embedding_model_name
         self.config = config or ClusteringConfig.from_yaml(config_path)
         self.embedding_repository = embedding_repository or QdrantEmbeddingRepository(collection_name=collection_name)
         self.functionality_manager = functionality_manager or FunctionalityManager()
@@ -122,12 +124,14 @@ class FunctionalityClusteringService:
                     silhouette_sample=evaluation_sample,
                     min_cluster_size=cfg.min_samples_per_cluster,
                 )
-                clusterer.save_model(artifacts.model)
+                clusterer.save_model(artifacts.directory, metadata=self._artifact_metadata())
                 quality_path = save_quality_report(final_quality, artifacts.quality_report)
                 logger.info(
                     "Saved clustering search artifacts",
                     artifact_dir=str(artifacts.directory),
-                    model_file=str(artifacts.model),
+                    joblib_model=str(artifacts.joblib_model),
+                    onnx_model=str(artifacts.onnx_model),
+                    manifest=str(artifacts.manifest),
                     quality_report=str(quality_path),
                 )
 
@@ -156,7 +160,7 @@ class FunctionalityClusteringService:
                 batch_size=cfg.batch_size,
                 initialization_vectors=evaluation_sample.vectors,
             )
-            clusterer.save_model(artifacts.model)
+            clusterer.save_model(artifacts.directory, metadata=self._artifact_metadata())
 
         if clusterer.kmeans is None:
             raise RuntimeError("Trained clusterer did not produce a fitted model.")
@@ -172,7 +176,9 @@ class FunctionalityClusteringService:
             logger.info(
                 "Validated trained clustering model",
                 artifact_dir=str(artifacts.directory),
-                model_file=str(artifacts.model),
+                joblib_model=str(artifacts.joblib_model),
+                onnx_model=str(artifacts.onnx_model),
+                manifest=str(artifacts.manifest),
                 quality_report=str(quality_path),
                 normalized_inertia=quality.normalized_inertia,
                 silhouette=quality.silhouette_score,
@@ -193,11 +199,12 @@ class FunctionalityClusteringService:
             collection_name=self.collection_name,
             split="test",
             embeddings=test_count,
-            model_file=str(cfg.load_model_file),
+            model_dir=str(cfg.load_model_dir),
+            joblib_model=str(cfg.load_model_dir / CLUSTERER_JOBLIB_FILENAME),
         )
 
         clusterer = MiniBatchKMeansClusterer()
-        clusterer.load_model(cfg.load_model_file)
+        clusterer.load_model(cfg.load_model_dir, expected_metadata=self._artifact_metadata())
 
         with log_duration(logger, "cluster_test_assignments", split="test", embeddings=test_count):
             self._store_assignments(clusterer.predict_batches(source, batch_size=cfg.batch_size))
@@ -220,3 +227,10 @@ class FunctionalityClusteringService:
             silhouette_metric=cfg.silhouette_metric,
             random_state=cfg.random_state,
         )
+
+    def _artifact_metadata(self) -> dict[str, str | bool | None]:
+        return {
+            "embedding_collection": self.collection_name,
+            "embedding_model": self.embedding_model_name,
+            "normalize_embeddings": True,
+        }

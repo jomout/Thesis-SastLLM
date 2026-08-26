@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from argus.classification import ClassificationConfig, LabelMapping, MLPModelConfig, RepositoryClassificationService, TrainingConfig
+from argus.classification.artifacts import CLASSIFIER_CHECKPOINT_FILENAME
 from argus.configs import get_logger
 from argus.ml import RepositoryDataModule
 from argus.ml.models import MLPRepositoryClassifier
@@ -192,7 +193,7 @@ def run_shap(
     class_counts = {int(label): int(count) for label, count in zip(unique_labels, counts)}
 
     model = MLPRepositoryClassifier.load_from_checkpoint(
-        model_dir / "best.ckpt",
+        model_dir / CLASSIFIER_CHECKPOINT_FILENAME,
         class_counts=class_counts,
     )
 

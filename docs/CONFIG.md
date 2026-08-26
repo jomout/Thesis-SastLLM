@@ -83,8 +83,10 @@ clustering:
   train:
     k: 10661
   test:
-    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
 ```
+
+The clustering test directory must contain `model.joblib`, `model.onnx`, and `manifest.json`. Test mode verifies the bundle and restores `model.joblib`.
 
 Classification:
 

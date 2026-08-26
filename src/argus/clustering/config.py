@@ -40,7 +40,7 @@ class TrainConfig:
 
 @dataclass(frozen=True)
 class TestConfig:
-    load_model_file: Path
+    load_model_dir: Path
     batch_size: int = 1000
 
 
@@ -99,7 +99,7 @@ class ClusteringConfig:
                 batch_size=_int(train_raw, "batch_size", default=1000),
             ),
             test=TestConfig(
-                load_model_file=Path(_str(test_raw, "load_model_file")),
+                load_model_dir=Path(_str(test_raw, "load_model_dir")),
                 batch_size=_int(test_raw, "batch_size", default=1000),
             ),
         )

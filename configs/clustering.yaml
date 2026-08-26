@@ -24,5 +24,5 @@ clustering:
 
   test:
     k: 10661
-    load_model_file: "models/clustering/trained_models/clusterer_10661_20260702_203843/clusterer_10661_20260702_203843.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_10661_20260827_191859"
     batch_size: 1000

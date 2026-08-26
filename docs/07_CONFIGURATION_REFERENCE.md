@@ -112,7 +112,7 @@ clustering:
 
   test:
     k: 10661
-    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
 ```
 
 Used by:
@@ -121,7 +121,7 @@ Used by:
 - `argus cluster --mode train`
 - `argus cluster --mode test`
 
-Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation.
+Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation. `test.load_model_dir` must contain `model.joblib`, `model.onnx`, and their checksummed `manifest.json`; test mode restores `model.joblib` after bundle verification.
 
 The `evaluation` section controls the fixed candidate-comparison reservoir, cluster-stratified silhouette, elbow neighborhood, and silhouette reliability threshold. `sample_size` should exceed the expected K so the reservoir can also initialize MiniBatchKMeans independently of source order. `silhouette_samples_per_cluster` sets the target minimum representation for each selected silhouette cluster. Search and train create timestamped run directories under their respective `save_model_dir`; every report and plot is stored beside its model.
 
@@ -186,6 +186,8 @@ Used by:
 - `argus classify --mode test`
 
 Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
+
+Classification does not accept `clusterer_manifest`. It consumes cluster ids already stored in PostgreSQL and uses `params.k` to define the expected cluster vocabulary size.
 
 Model architecture fields live in strict reusable profiles under `models`. Each classification mode selects one profile by name. Optimization and data-loading fields remain under the mode's `params` mapping.
 

@@ -18,6 +18,7 @@ from argus.ml.models import LSTMModelConfig, RepositoryClassifierModule, Transfo
 from argus.ml.training import AccuracyHistoryCallback, AccuracyHistoryRecord, best_checkpoint_path, build_trainer
 from argus.utils.observability import count_parameters, log_duration
 
+from .artifacts import CLASSIFIER_CHECKPOINT_FILENAME, CLASSIFIER_WEIGHTS_FILENAME, export_classifier_bundle, verify_classifier_bundle
 from .config import ClassificationConfig
 from .data import RepositoryDatasetBuilder
 from .encoders import ClusterDistributionEncoder, LabelMapping, OrderedFunctionalityTokenSequenceEncoder, RepositoryEncoderProtocol
@@ -258,12 +259,20 @@ class RepositoryClassificationService:
         )
         return model
 
-    def _load_checkpoint(self, model_dir: Path) -> RepositoryClassifierModule:
+    def _load_checkpoint(self, model_dir: Path, *, verify_bundle: bool = True) -> RepositoryClassifierModule:
         if self.bundle is None:
             raise RuntimeError("Classification dataset bundle has not been built.")
-        checkpoint = model_dir / "best.ckpt"
+        checkpoint = model_dir / CLASSIFIER_CHECKPOINT_FILENAME
         if not checkpoint.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+        if verify_bundle:
+            verify_classifier_bundle(
+                model_dir=model_dir,
+                expected_model_config=self.config.model.model_dump(mode="json"),
+                expected_k=self.config.training.k,
+                expected_labels=self.labels.index_to_label,
+                expected_encoder_config=self._encoder_artifact_config(),
+            )
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
         class_counts = _class_counts(labels)
@@ -306,14 +315,26 @@ class RepositoryClassificationService:
 
     def _persist_checkpoint(self, trainer, model_dir: Path) -> None:
         best_src = best_checkpoint_path(trainer)
-        destination = model_dir / "best.ckpt"
+        checkpoint_destination = model_dir / CLASSIFIER_CHECKPOINT_FILENAME
         if best_src and Path(best_src).is_file():
-            shutil.copy2(best_src, destination)
+            shutil.copy2(best_src, checkpoint_destination)
             source_type = "best"
         else:
-            trainer.save_checkpoint(destination)
-            best_src = str(destination)
+            trainer.save_checkpoint(checkpoint_destination)
+            best_src = str(checkpoint_destination)
             source_type = "last"
+
+        checkpoint = torch.load(checkpoint_destination, map_location="cpu", weights_only=True)
+        state_dict = checkpoint.get("state_dict")
+        if not isinstance(state_dict, dict):
+            raise TypeError(f"Checkpoint does not contain a valid state_dict: {checkpoint_destination}")
+        weights_destination = model_dir / CLASSIFIER_WEIGHTS_FILENAME
+        temporary_weights = model_dir / f".{CLASSIFIER_WEIGHTS_FILENAME}.tmp"
+        try:
+            torch.save(state_dict, temporary_weights)
+            temporary_weights.replace(weights_destination)
+        finally:
+            temporary_weights.unlink(missing_ok=True)
 
         (model_dir / "config.json").write_text(
             json.dumps(self.config.training.model_dump(by_alias=False), indent=2),
@@ -334,12 +355,41 @@ class RepositoryClassificationService:
             ),
             encoding="utf-8",
         )
+        saved_model = self._load_checkpoint(model_dir, verify_bundle=False)
+        export_classifier_bundle(
+            model=saved_model,
+            model_dir=model_dir,
+            validation_features=self._export_validation_features(),
+            model_config=self.config.model.model_dump(mode="json"),
+            training_config=self.config.training.model_dump(mode="json", by_alias=False),
+            labels=self.labels.index_to_label,
+            encoder_config=self._encoder_artifact_config(),
+            source=best_src,
+            source_type=source_type,
+        )
         logger.info(
             "Persisted classifier checkpoint",
             model_dir=str(model_dir),
-            checkpoint=str(destination),
+            checkpoint=str(checkpoint_destination),
+            weights=str(weights_destination),
             source_type=source_type,
         )
+
+    def _export_validation_features(self, *, maximum_real_samples: int = 15) -> torch.Tensor:
+        if self.bundle is None or len(self.bundle.dataset) == 0:
+            raise RuntimeError("Classification dataset bundle has no samples for ONNX validation.")
+        indices = self.bundle.val_indices or self.bundle.test_indices or self.bundle.train_indices or list(range(len(self.bundle.dataset)))
+        selected = indices[:maximum_real_samples]
+        real_features = self.bundle.dataset.X[selected].detach().cpu()
+        empty_features = torch.zeros_like(self.bundle.dataset.X[:1]).cpu()
+        return torch.cat((real_features, empty_features), dim=0).contiguous()
+
+    def _encoder_artifact_config(self) -> dict[str, object]:
+        config: dict[str, object] = {"name": self.encoder.__class__.__name__}
+        for attribute in ("num_clusters", "matrix_normalization", "max_sequence_length", "truncation", "padding_token_id"):
+            if hasattr(self.encoder, attribute):
+                config[attribute] = getattr(self.encoder, attribute)
+        return config
 
     def _trainer(self):
         return build_trainer(max_epochs=self.config.training.epochs)

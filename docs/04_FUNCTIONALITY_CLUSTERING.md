@@ -72,7 +72,7 @@ clustering:
 
   test:
     k: 10661
-    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
 ```
 
 ## Model
@@ -84,8 +84,13 @@ Important behavior:
 - embeddings are L2-normalized before fitting and prediction
 - fitting streams vectors in batches of `1000`
 - candidate and train models are initialized from the seeded reservoir when it contains at least `k` rows, avoiding dependence on Qdrant stream order
-- model state is saved with `joblib`
-- saved payload contains `minibatch_kmeans_model` and `n_clusters`
+- the fitted scikit-learn model is saved as `model.joblib` for test-time restoration
+- the same model is exported as `model.onnx` and checked against scikit-learn predictions
+- `manifest.json` records the cluster count, embedding contract, dependency versions, ONNX parity result, and SHA-256 checksums for both model files
+- test mode verifies the complete artifact bundle before deserializing and using `model.joblib`; it does not use ONNX for clustering assignments
+- cluster centers are contained in the saved models and are not written as a separate `.npz`
+
+This is a breaking artifact-format change. Existing standalone joblib or ONNX files without the current `manifest.json` are not accepted; train or export the clusterer again with the current code and update `test.load_model_dir` to the generated model directory.
 
 ## Search mode
 
@@ -131,7 +136,7 @@ Cluster health includes empty, singleton, and below-minimum cluster counts; size
 Search model filename:
 
 ```text
-models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/clusterer_<n>_<k>_<timestamp>.joblib
+models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/model.joblib
 ```
 
 All search artifacts from one population run share the same directory and timestamp:
@@ -139,7 +144,9 @@ All search artifacts from one population run share the same directory and timest
 ```text
 models/clustering/searching_models/clusterers_<n>_<timestamp>/
   clusterer_<n>_<k>_<timestamp>/
-    clusterer_<n>_<k>_<timestamp>.joblib
+    model.joblib
+    model.onnx
+    manifest.json
     clusterer_<n>_<k>_<timestamp>_quality.json
     clusterer_<n>_<k>_<timestamp>_selection_quality.json
     clusterer_<n>_<k>_<timestamp>_selection_candidates.csv
@@ -157,7 +164,10 @@ models/clustering/searching_models/clusterers_<n>_<timestamp>/
 5. Save the trained model:
 
     ```text
-    models/clustering/trained_models/clusterer_10661_<timestamp>/clusterer_10661_<timestamp>.joblib
+    models/clustering/trained_models/clusterer_10661_<timestamp>/
+      model.joblib
+      model.onnx
+      manifest.json
     ```
 
 6. Run a full streaming quality evaluation and save `clusterer_<k>_<timestamp>_quality.json` beside the model.
@@ -173,10 +183,11 @@ functionality_id -> cluster_id
 
 `test` loads the configured trained model and assigns clusters to test-split embeddings:
 
-1. Load the timestamped model configured in `test.load_model_file`.
-2. Read embeddings with payload `split=test`.
-3. Predict cluster ids.
-4. Bulk-update `functionalities.cluster_id`.
+1. Verify `manifest.json` and both model-file checksums inside the directory configured in `test.load_model_dir`.
+2. Load `model.joblib` from that directory.
+3. Read embeddings with payload `split=test`.
+4. Predict cluster ids with the restored scikit-learn model.
+5. Bulk-update `functionalities.cluster_id`.
 
 No new model is trained in test mode.
 
@@ -185,7 +196,9 @@ No new model is trained in test mode.
 | Destination                                                                                    | Content                                                                     |
 | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `functionalities.cluster_id`                                                                   | integer cluster id assigned to each functionality                           |
-| `models/clustering/.../*.joblib`                                                               | trained MiniBatchKMeans model                                               |
+| `models/clustering/.../model.joblib`                                                           | scikit-learn clusterer restored by test mode                                |
+| `models/clustering/.../model.onnx`                                                             | portable, parity-checked inference model                                    |
+| `models/clustering/.../manifest.json`                                                          | artifact contract, versions, validation result, and model-file checksums    |
 | `models/clustering/.../*_quality.json`                                                         | full selected/final quality reports and per-cluster statistics              |
 | `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | search model, candidate metrics, selection rationale, CSV, and quality plot |
 | `models/clustering/trained_models/clusterer_<k>_<timestamp>/`                                  | trained model and full quality report                                       |
