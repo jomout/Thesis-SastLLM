@@ -103,6 +103,7 @@ models:
     max_sequence_length: 512
     truncation: "first"
   transformer:
+    input_encoding: "ordered_tokens"
     embedding_dim: 128
     num_layers: 2
     num_heads: 4
@@ -160,6 +161,6 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 - `classification.<mode>.model` selects a strict profile from the top-level `models` registry.
 - `model: mlp` uses aggregate cluster-distribution vectors.
 - `model: lstm` uses ordered functionality-cluster token sequences plus a learned embedding layer.
-- `model: transformer` uses ordered functionality-cluster tokens, learned positional embeddings, and padding-masked self-attention.
+- `model: transformer` supports `input_encoding: "ordered_tokens"` and `input_encoding: "cluster_distribution"`.
 - For LSTM models, `embedding_dim` controls the learned cluster-token embedding width, `max_sequence_length` controls sequence padding/truncation, and `pooling` may be `last`, `mean`, or `max`.
-- For Transformer models, `embedding_dim` must be divisible by `num_heads`; `feedforward_dim` sets the encoder feed-forward width. Start with `max_sequence_length: 256` because attention cost grows quadratically with sequence length.
+- For Transformer models, `embedding_dim` must be divisible by `num_heads`; `feedforward_dim` sets the encoder feed-forward width. With ordered tokens, `max_sequence_length` limits functionality timesteps. With cluster distributions, it limits the most frequent nonzero clusters included in attention. Start at `256` because attention cost grows quadratically.

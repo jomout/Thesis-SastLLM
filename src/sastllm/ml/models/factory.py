@@ -28,6 +28,7 @@ def build_model(
     logger.info(
         "Building repository classifier model",
         model=config.name,
+        input_encoding=getattr(config, "input_encoding", None),
         input_dim=input_dim,
         output_dim=output_dim,
         lr=lr,
@@ -68,6 +69,7 @@ def build_model(
         return TransformerRepositoryClassifier(
             input_dim=input_dim,
             output_dim=output_dim,
+            input_encoding=config.input_encoding,
             embedding_dim=config.embedding_dim,
             num_layers=config.num_layers,
             num_heads=config.num_heads,

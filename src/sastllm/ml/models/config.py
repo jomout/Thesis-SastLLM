@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 Pooling = Literal["last", "mean", "max"]
 Truncation = Literal["first", "last"]
+TransformerInputEncoding = Literal["ordered_tokens", "cluster_distribution"]
 
 
 class MLPModelConfig(BaseModel):
@@ -34,6 +35,7 @@ class TransformerModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: Literal["transformer"] = "transformer"
+    input_encoding: TransformerInputEncoding = "ordered_tokens"
     embedding_dim: int = 128
     num_layers: int = 2
     num_heads: int = 4
@@ -47,6 +49,8 @@ class TransformerModelConfig(BaseModel):
     def validate_attention_shape(self) -> "TransformerModelConfig":
         if self.embedding_dim % self.num_heads != 0:
             raise ValueError("transformer embedding_dim must be divisible by num_heads.")
+        if self.input_encoding == "cluster_distribution" and self.pooling == "last":
+            raise ValueError("transformer pooling='last' is not supported with cluster_distribution input; use 'mean' or 'max'.")
         return self
 
 

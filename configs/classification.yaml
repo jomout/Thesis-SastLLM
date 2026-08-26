@@ -14,6 +14,7 @@ models:
     truncation: "first"
 
   transformer:
+    input_encoding: "cluster_distribution"
     embedding_dim: 128
     num_layers: 2
     num_heads: 4
@@ -56,7 +57,7 @@ classification:
 
   test:
     model: transformer
-    load_model_dir: "models/classification/trained_models/model_20260624_220839"
+    load_model_dir: "models/classification/trained_models/model_20260715_214204" #NEW_BEST_TRANSFORMER
     params:
       k: 10661
       lr: 0.0001

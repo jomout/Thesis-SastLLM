@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import logging.config
+from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 
 import structlog
 import yaml
@@ -69,7 +71,35 @@ def _make_console_renderer() -> Processor:
 
 
 def _make_json_renderer() -> Processor:
-    return structlog.processors.JSONRenderer()
+    return structlog.processors.JSONRenderer(serializer=_json_serializer)
+
+
+def _json_serializer(value: Any, **kwargs: Any) -> str:
+    return json.dumps(_to_json_safe(value), **kwargs)
+
+
+def _to_json_safe(value: Any) -> Any:
+    """Convert structured log values, including NumPy values, to JSON-safe types."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Enum):
+        return _to_json_safe(value.value)
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {key if isinstance(key, str) else str(key): _to_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_to_json_safe(item) for item in value]
+
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        return _to_json_safe(to_list())
+    item = getattr(value, "item", None)
+    if callable(item):
+        converted = item()
+        if converted is not value:
+            return _to_json_safe(converted)
+    return str(value)
 
 
 def _convert_simple_log_block(block: Optional[Dict[str, Any]]) -> Dict[str, Any]:

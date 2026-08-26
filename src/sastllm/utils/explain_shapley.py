@@ -188,7 +188,8 @@ def run_shap(
     if service.bundle is None:
         raise RuntimeError("Classification dataset bundle has not been built.")
     labels = service.bundle.dataset.y.numpy(force=True)
-    class_counts = dict(zip(*np.unique(labels, return_counts=True)))
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    class_counts = {int(label): int(count) for label, count in zip(unique_labels, counts)}
 
     model = MLPRepositoryClassifier.load_from_checkpoint(
         model_dir / "best.ckpt",
