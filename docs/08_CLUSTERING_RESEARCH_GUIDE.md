@@ -121,7 +121,9 @@ Search may be expensive. With 30 candidates and approximately 1.9 million embedd
 ```text
 models/clustering/searching_models/clusterers_<n>_<timestamp>/
   clusterer_<n>_<selected_k>_<timestamp>/
-    clusterer_<n>_<selected_k>_<timestamp>.joblib
+    model.joblib
+    model.onnx
+    manifest.json
     clusterer_<n>_<selected_k>_<timestamp>_quality.json
     clusterer_<n>_<selected_k>_<timestamp>_selection_quality.json
     clusterer_<n>_<selected_k>_<timestamp>_selection_candidates.csv
@@ -174,7 +176,7 @@ clustering:
     k: <selected_k>
   test:
     k: <selected_k>
-    load_model_file: "models/clustering/trained_models/clusterer_<selected_k>_<timestamp>/clusterer_<selected_k>_<timestamp>.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_<selected_k>_<timestamp>"
 ```
 
 In `configs/classification.yaml`, set `params.k` under every classification mode that will be used:
@@ -214,7 +216,9 @@ Outputs:
 
 ```text
 models/clustering/trained_models/clusterer_<k>_<timestamp>/
-  clusterer_<k>_<timestamp>.joblib
+  model.joblib
+  model.onnx
+  manifest.json
   clusterer_<k>_<timestamp>_quality.json
 ```
 
@@ -228,7 +232,7 @@ Inspect the train quality report before classification. Confirm that:
 
 ## Step 6: Apply the model to test data
 
-Confirm that `test.load_model_file` points to the newly trained artifact, then run:
+Confirm that `test.load_model_dir` points to the newly trained model directory containing `model.joblib`, `model.onnx`, and `manifest.json`, then run:
 
 ```bash
 uv run argus cluster --mode test
@@ -236,12 +240,15 @@ uv run argus cluster --mode test
 
 Expected behavior:
 
-- the model is loaded without refitting
+- the manifest and model checksums are verified
+- `model.joblib` is loaded without refitting
 - only `split=test` vectors are read
 - cluster ids are written for test functionalities
 - the training vocabulary and centroid positions remain frozen
 
 Test mode currently writes assignments but does not produce a separate test quality report.
+
+Standalone joblib and ONNX artifacts without the current manifest are not loadable by this pipeline. Refit/export the clusterer with the current code before test mode.
 
 ## Step 7: Continue to classification
 

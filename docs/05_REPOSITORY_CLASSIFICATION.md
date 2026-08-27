@@ -92,6 +92,8 @@ classification:
 
 The YAML key `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 
+Classification does not accept a clusterer model or clusterer manifest. It consumes the zero-based cluster ids already stored on functionality rows. `classification.<mode>.params.k` defines the expected cluster vocabulary size and must match those stored ids.
+
 ## Data fetch
 
 `RepositoryClassificationService` fetches repositories through:
@@ -202,8 +204,8 @@ Unknown or misplaced model fields fail during configuration loading instead of b
 
 Supported model names:
 
-| Name                                      | Input encoding                                                                | Implementation                         |
-| ----------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| Name                                      | Input encoding                                                                | Implementation                       |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
 | `mlp`                                     | `ClusterDistributionEncoder`, shape `[repositories, k]`                       | `src/argus/ml/models/mlp.py`         |
 | `lstm`                                    | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/argus/ml/models/lstm.py`        |
 | `transformer` with `ordered_tokens`       | `OrderedFunctionalityTokenSequenceEncoder`, shape `[repositories, timesteps]` | `src/argus/ml/models/transformer.py` |
@@ -393,9 +395,11 @@ Each plot contains training and validation accuracy over epochs.
 7. Trains the configured Lightning model. The current default is `MLPRepositoryClassifier`.
 8. Monitors `val_acc`.
 9. Uses early stopping with patience `10`.
-10. Saves the best checkpoint as `best.ckpt`.
-11. Writes `config.json` and `meta.json`.
-12. Evaluates the saved model on the train split.
+10. Saves the best checkpoint as `model.ckpt` and its state dictionary as `model.pt`.
+11. Exports `model.onnx` with a dynamic batch dimension.
+12. Verifies ONNX logits and predicted classes against PyTorch on validation and empty/padded inputs.
+13. Writes `config.json`, `meta.json`, and a checksummed `manifest.json` containing the model input and label contracts.
+14. Evaluates the saved model on the train split.
 
 Model output directory:
 
@@ -408,11 +412,12 @@ models/classification/trained_models/model_<YYYYMMDD_HHMMSS>/
 `classify --mode test`:
 
 1. Loads `classification.test.load_model_dir`.
-2. Loads `best.ckpt` from that directory.
-3. Runs Lightning test on the data module.
-4. Predicts repository classes for the test split.
-5. Writes `test_predictions.json`.
-6. Computes and writes `test_metrics.json`.
+2. Verifies artifact checksums, model configuration, labels, encoder configuration, and `k` when a manifest is present.
+3. Loads `model.ckpt` from that directory with Lightning. Test mode does not restore from `model.pt` or `model.onnx`.
+4. Runs Lightning test on the data module.
+5. Predicts repository classes for the test split.
+6. Writes `test_predictions.json`.
+7. Computes and writes `test_metrics.json`.
 
 ## Metrics
 
@@ -441,9 +446,12 @@ Predictions are stored as:
 
 | File                     | Meaning                                             |
 | ------------------------ | --------------------------------------------------- |
-| `best.ckpt`              | saved Lightning checkpoint                          |
+| `model.ckpt`             | saved Lightning checkpoint used by test mode        |
+| `model.pt`               | plain PyTorch state dictionary                      |
+| `model.onnx`             | portable inference model                            |
 | `config.json`            | serialized classifier config                        |
 | `meta.json`              | save timestamp, source checkpoint, monitored metric |
+| `manifest.json`          | checksums, versions, contracts, and parity results  |
 | `train_predictions.json` | optional persisted train predictions                |
 | `train_metrics.json`     | train evaluation metrics                            |
 | `test_predictions.json`  | test predictions                                    |
@@ -453,6 +461,6 @@ Predictions are stored as:
 
 - No repositories are returned if `repositories.processed` is false.
 - Train/validation split fails if there are too few examples per class.
-- `best.ckpt` must exist for test mode.
+- `model.ckpt` must exist for test mode.
 - Classification `k` must match clustering `k`.
 - Repository ids are converted to dataset indices with `repository_id - 1`; this assumes dense, 1-based repository ids.

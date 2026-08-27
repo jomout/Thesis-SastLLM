@@ -175,7 +175,9 @@ Inspect:
 ```text
 models/clustering/searching_models/clusterers_<n>_<timestamp>/
   clusterer_<n>_<k>_<timestamp>/
-    clusterer_<n>_<k>_<timestamp>.joblib
+    model.joblib
+    model.onnx
+    manifest.json
     clusterer_<n>_<k>_<timestamp>_quality.json
     clusterer_<n>_<k>_<timestamp>_selection_quality.json
     clusterer_<n>_<k>_<timestamp>_selection_candidates.csv
@@ -206,7 +208,7 @@ clustering:
 
   test:
     k: K_SELECTED
-    load_model_file: "models/clustering/trained_models/clusterer_K_SELECTED_TIMESTAMP/clusterer_K_SELECTED_TIMESTAMP.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_K_SELECTED_TIMESTAMP"
 ```
 
 Update all modes in `configs/classification.yaml`:
@@ -325,7 +327,9 @@ Expected output directory:
 models/classification/trained_models/model_<timestamp>/
 ```
 
-It contains the best checkpoint, effective configuration, metadata, train predictions, and train metrics.
+It contains the Lightning checkpoint, PyTorch weights, ONNX model, checksummed manifest, effective configuration, metadata, train predictions, and train metrics.
+
+The three model files are `model.ckpt`, `model.pt`, and `model.onnx`. Test mode restores `model.ckpt` from the configured directory.
 
 Record the printed model directory. Set it in `classification.test.load_model_dir` and keep `classification.test.model` consistent with training:
 

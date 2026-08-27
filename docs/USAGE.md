@@ -200,6 +200,6 @@ Use this when:
 | `cache/functionalities-<llm_type>/`                                                            | parsed functionality caches                     |
 | `api_batches_extra/`                                                                           | Batch API request JSONL files                   |
 | `batch_results_extra/`                                                                         | downloaded Batch API outputs/errors             |
-| `models/clustering/trained_models/`                                                            | clustering joblib files                         |
-| `models/classification/trained_models/`                                                        | classifier checkpoints, configs, metrics        |
+| `models/clustering/trained_models/`                                                            | clustering joblib/ONNX bundles, manifests, and quality reports |
+| `models/classification/trained_models/`                                                        | classifier checkpoints, weights, ONNX, manifests, configs, and metrics |
 | `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | clustering search model, reports, CSV, and plot |

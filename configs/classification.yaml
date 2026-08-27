@@ -50,20 +50,20 @@ classification:
       weight_decay: 0.0001
       l1_param: 0.001
       epochs: 50
-      batch_size: 32
+      batch_size: 16
       use_weighted_sampler: false
       use_class_weights: true
       seed: 42
 
   test:
     model: transformer
-    load_model_dir: "models/classification/trained_models/model_20260715_214204" #NEW_BEST_TRANSFORMER
+    load_model_dir: "models/classification/trained_models/model_20260827_203210" #NEW_BEST_TRANSFORMER
     params:
       k: 10661
       lr: 0.0001
       weight_decay: 0.0001
       l1_param: 0.001
-      batch_size: 32
+      batch_size: 16
       use_weighted_sampler: false
       use_class_weights: true
       seed: 42

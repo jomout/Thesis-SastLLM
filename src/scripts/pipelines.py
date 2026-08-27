@@ -83,7 +83,7 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     collection_name = model_name.replace("/", "_")
 
     logger.info("Clustering configuration loaded", mode=mode, collection_name=collection_name)
-    processor = FunctionalityClusteringService(collection_name=collection_name)
+    processor = FunctionalityClusteringService(collection_name=collection_name, embedding_model_name=model_name)
 
     try:
         with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):

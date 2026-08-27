@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-import joblib  # type: ignore[import-untyped]
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans  # type: ignore[import-untyped]
 
 from argus.configs import get_logger
 
+from .artifacts import export_clusterer_bundle, load_clusterer_bundle
 from .sources import EmbeddingSource, normalize_batches
 
 logger = get_logger(__name__)
@@ -25,19 +25,17 @@ class ClusterAssignmentBatch:
 
 class MiniBatchKMeansClusterer:
     """
-    Streaming MiniBatchKMeans wrapper for functionality embeddings.
+    Streaming MiniBatchKMeans trainer with joblib restoration and ONNX export.
 
     It avoids materializing the full embedding matrix in memory during fit and
     prediction. The legacy `predict()` array API is retained for compatibility.
     """
 
-    MODEL_KEY = "minibatch_kmeans_model"
-    CLUSTERS_KEY = "n_clusters"
-
     def __init__(self, *, random_state: int = 42) -> None:
         self.random_state = random_state
         self.kmeans: MiniBatchKMeans | None = None
         self.n_clusters: int | None = None
+        self.embedding_dimension: int | None = None
 
     def fit(
         self,
@@ -58,6 +56,7 @@ class MiniBatchKMeansClusterer:
             initialization_vectors=initialization_vectors,
         )
         self.n_clusters = k
+        self.embedding_dimension = int(self.kmeans.cluster_centers_.shape[1])
         logger.info("MiniBatchKMeans training completed", k=k)
 
     def predict_batches(self, source: EmbeddingSource, *, batch_size: int = 1000) -> Iterator[ClusterAssignmentBatch]:
@@ -66,10 +65,15 @@ class MiniBatchKMeansClusterer:
 
         total = 0
         for ids, vectors in normalize_batches(source, batch_size):
-            labels = self.kmeans.predict(vectors)
+            if self.embedding_dimension is not None and vectors.shape[1] != self.embedding_dimension:
+                raise ValueError(f"Embedding dimension mismatch: model expects {self.embedding_dimension}, got {vectors.shape[1]}.")
+
+            labels = np.asarray(self.kmeans.predict(vectors), dtype=np.int64).reshape(-1)
+            if len(labels) != len(ids):
+                raise RuntimeError(f"Clusterer returned {len(labels)} labels for {len(ids)} embeddings.")
             total += len(ids)
             logger.debug("Predicted clustering batch", batch_size=len(ids), total=total)
-            yield ClusterAssignmentBatch(functionality_ids=ids, cluster_ids=labels.astype(np.int64))
+            yield ClusterAssignmentBatch(functionality_ids=ids, cluster_ids=labels)
         logger.info("Cluster prediction completed", samples=total)
 
     def predict(self, source: EmbeddingSource, *, batch_size: int = 1000) -> np.ndarray:
@@ -78,46 +82,30 @@ class MiniBatchKMeansClusterer:
             return np.empty((0, 2), dtype=np.int64)
         return np.concatenate(batches, axis=0)
 
-    def save_model(self, path: str | Path) -> None:
+    def save_model(self, model_dir: str | Path, *, metadata: Mapping[str, Any] | None = None) -> None:
         if self.kmeans is None or self.n_clusters is None:
             raise RuntimeError("Model must be fit before saving.")
 
-        model_path = Path(path)
-        model_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(
-            {
-                self.MODEL_KEY: self.kmeans,
-                self.CLUSTERS_KEY: self.n_clusters,
-                "metadata": {
-                    "clusterer": self.__class__.__name__,
-                    "random_state": self.random_state,
-                },
-            },
-            model_path,
+        export_clusterer_bundle(
+            model=self.kmeans,
+            model_dir=model_dir,
+            metadata=metadata,
+            random_state=self.random_state,
         )
-        logger.info("Saved clustering model to %s.", model_path)
 
-    def load_model(self, path: str | Path) -> None:
-        model_path = Path(path)
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {model_path}")
-
-        payload: Any = joblib.load(model_path)
-        if isinstance(payload, dict):
-            model = payload.get(self.MODEL_KEY) or payload.get("model")
-            n_clusters = payload.get(self.CLUSTERS_KEY) or payload.get("n_clusters")
-        else:
-            model = payload
-            n_clusters = getattr(payload, "n_clusters", None)
-
-        if not isinstance(model, MiniBatchKMeans):
-            raise TypeError(f"Unsupported clustering artifact in {model_path}.")
-        if not isinstance(n_clusters, int) or n_clusters <= 0:
-            raise ValueError(f"Missing or invalid cluster count in {model_path}.")
-
-        self.kmeans = model
-        self.n_clusters = n_clusters
-        logger.info("Loaded clustering model from %s.", model_path)
+    def load_model(self, model_dir: str | Path, *, expected_metadata: Mapping[str, Any] | None = None) -> None:
+        loaded = load_clusterer_bundle(model_dir, expected_metadata=expected_metadata)
+        self.kmeans = loaded.model
+        self.n_clusters = loaded.n_clusters
+        self.embedding_dimension = loaded.embedding_dimension
+        if loaded.random_state is not None:
+            self.random_state = loaded.random_state
+        logger.info(
+            "Loaded joblib clustering model",
+            model_dir=str(model_dir),
+            n_clusters=self.n_clusters,
+            embedding_dimension=self.embedding_dimension,
+        )
 
     def _fit_new_model(
         self,

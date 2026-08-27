@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   code_embeddings:
-    image: qdrant/qdrant:v1.17
+    image: qdrant/qdrant:v1.19
     container_name: code_qdrant
     restart: unless-stopped
     ports:
