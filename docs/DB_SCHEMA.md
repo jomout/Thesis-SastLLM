@@ -1,192 +1,178 @@
 # Database Schema
 
-This project uses a **PostgreSQL** database to store and process repository-level intelligence.
-The schema is designed as a hierarchical pipeline:
+This document describes the PostgreSQL schema used by the SAST-LLM pipeline. For the broader storage picture, including Qdrant, see [06_STORAGE_AND_DATA_ACCESS.md](./06_STORAGE_AND_DATA_ACCESS.md).
 
-    ```
-    repositories → files → snippets → functionalities
-    ```
+## Core hierarchy
 
-Each level represents a finer granularity of code analysis.
+```text
+repositories -> files -> snippets -> functionalities
+```
 
----
+Each level represents a finer unit of analysis:
 
-## Global Conventions
+- repository: one analyzed project
+- file: one source file in that repository
+- snippet: one chunked code segment
+- functionality: one LLM-derived semantic action for a snippet
 
-* All tables include:
+## Global conventions
 
-  * `created_at`: timestamp of insertion
-  * `updated_at`: auto-updated timestamp via trigger
-* `processed` flags are used to track pipeline progress
-* Cascading deletes ensure referential integrity
+- Main tables include `created_at` and `updated_at`.
+- `processed` flags track pipeline progress on repositories, files, and snippets.
+- Child rows cascade when a parent repository/file/snippet is deleted.
+- `updated_at` is maintained by trigger functions in SQL and/or SQLAlchemy `onupdate` where configured.
 
----
+## `repositories`
 
-## Trigger: `set_updated_at`
+Fields:
 
-Automatically updates `updated_at` on row modification.
+| Field           | Meaning                                              |
+| --------------- | ---------------------------------------------------- |
+| `repository_id` | primary key                                          |
+| `name`          | unique repository identifier                         |
+| `label`         | source label, such as `benign`, `apt`, `rat`, `worm` |
+| `processed`     | true when all child files/snippets are processed     |
+| `split`         | `train` or `test`                                    |
+| `created_at`    | insert timestamp                                     |
+| `updated_at`    | update timestamp                                     |
 
-* Applied via `BEFORE UPDATE` triggers on all tables
-* Uses `clock_timestamp()` for precise timing
+Used by loading, splitting, processed filtering, and classification.
 
----
+## `files`
 
-## Entities
+Fields:
 
-### `repositories`
+| Field           | Meaning                                      |
+| --------------- | -------------------------------------------- |
+| `file_id`       | primary key                                  |
+| `repository_id` | parent repository                            |
+| `language`      | internal language name from `languages.yaml` |
+| `filename`      | basename                                     |
+| `filepath`      | path relative to dataset root                |
+| `processed`     | true when all child snippets are processed   |
+| `created_at`    | insert timestamp                             |
+| `updated_at`    | update timestamp                             |
 
-Represents a source code repository (e.g., a GitHub repo).
+Important indexes:
 
-**Fields:**
+- `idx_files_repository_id`
+- `idx_files_repo_processed`
 
-* `repository_id` (PK)
-* `name` (unique, required): repository identifier
-* `label` (nullable): ground-truth classification (e.g., `malware`, `benignware`)
-* `processed` (boolean): whether repository-level processing is complete
-* `split` (nullable): dataset split (`train`, `val`, `test`)
-* `created_at`, `updated_at`
+## `snippets`
 
-**Notes:**
+Fields:
 
-* Top-level entity in the pipeline
-* Used for ML dataset partitioning and evaluation
+| Field        | Meaning                                    |
+| ------------ | ------------------------------------------ |
+| `snippet_id` | primary key                                |
+| `file_id`    | parent file                                |
+| `start_line` | 1-based start line                         |
+| `end_line`   | 1-based inclusive end line                 |
+| `code`       | chunked source code                        |
+| `processed`  | true after functionality generation/import |
+| `created_at` | insert timestamp                           |
+| `updated_at` | update timestamp                           |
 
----
+Important indexes:
 
-### `files`
+- `idx_snippets_file_id`
+- `idx_snippets_processed`
+- `idx_snippets_file_id_processed`
 
-Represents individual files within a repository.
+## `functionalities`
 
-**Fields:**
+Fields:
 
-* `file_id` (PK)
-* `repository_id` (FK → repositories, cascade delete)
-* `language` (required): programming language (e.g., `py`, `cpp`)
-* `filename`
-* `filepath`: relative path inside repository
-* `processed` (boolean): whether file has been analyzed
-* `created_at`, `updated_at`
+| Field              | Meaning                           |
+| ------------------ | --------------------------------- |
+| `functionality_id` | primary key                       |
+| `snippet_id`       | parent snippet                    |
+| `description`      | raw LLM-generated action sentence |
+| `tag`              | normalized functionality text     |
+| `cluster_id`       | assigned semantic cluster id      |
+| `created_at`       | insert timestamp                  |
+| `updated_at`       | update timestamp                  |
 
-**Indexes:**
+Important indexes:
 
-* `idx_files_repository_id`
-* `idx_files_repo_processed (repository_id, processed)`
+- `idx_functionalities_snippet_id`
+- `idx_functionalities_cluster_id`
+- `idx_functionalities_tag`
 
-**Notes:**
+## Additional ORM models
 
-* Enables filtering by language and processing status
-* Core unit for file-level analysis
+The ORM also defines:
 
----
+| Model/table                                            | Purpose                                     |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `CSNCodeSnippetModel` / `csn_snippets`                 | CodeSearchNet snippet/functionality storage |
+| `RepositoryPredictionModel` / `repository_predictions` | optional repository prediction records      |
 
-### `snippets`
+The current classifier writes prediction and metric JSON files under model directories rather than inserting into `repository_predictions`.
 
-Represents extracted code segments from files.
+## Processed propagation triggers
 
-**Fields:**
+`database/01__triggers.sql` defines:
 
-* `snippet_id` (PK)
-* `file_id` (FK → files, cascade delete)
-* `start_line`, `end_line`: location in file
-* `code`: raw code snippet
-* `processed` (boolean): whether snippet has been analyzed by LLM
-* `created_at`, `updated_at`
+- `recompute_file_processed(file_id)`
+- `recompute_repository_processed(repository_id)`
+- `trg_snippet_refresh_file_processed()`
+- `trg_file_refresh_repository_processed()`
 
-**Indexes:**
+Trigger propagation:
 
-* `idx_snippets_file_id`
-* `idx_snippets_processed`
-* `idx_snippets_file_id_processed (file_id, processed)`
+```text
+snippets.processed changes
+  -> recompute files.processed
+  -> recompute repositories.processed
+```
 
-**Notes:**
+A file is processed when no child snippet has `processed IS NOT TRUE`.
 
-* Main unit for LLM-based code understanding
-* Supports incremental processing via `processed` flag
+A repository is processed when no child file has `processed IS NOT TRUE`.
 
----
+This is important because classification reads only repositories where:
 
-### `functionalities`
+```sql
+repositories.processed IS TRUE
+```
 
-Represents semantic descriptions extracted from snippets.
+## Classification aggregation
 
-**Fields:**
+The classifier does not read raw snippets directly. It aggregates cluster ids through:
 
-* `functionality_id` (PK)
-* `snippet_id` (FK → snippets, cascade delete)
-* `description`: raw natural language output (e.g., LLM-generated)
-* `tag`: normalized/cleaned functionality label
-* `cluster_id` (nullable): grouping identifier for similar functionalities
-* `created_at`, `updated_at`
+```text
+repositories
+  left join files
+  left join snippets
+  left join functionalities
+```
 
-**Indexes:**
+For each processed repository it builds:
 
-* `idx_functionalities_snippet_id`
-* `idx_functionalities_cluster_id`
-* `idx_functionalities_tag`
+```text
+{cluster_id: count}
+```
 
-**Notes:**
+That dictionary becomes the repository-level feature vector.
 
-* Bridges code → semantics
-* `tag` is used for downstream clustering and ML features
-* `cluster_id` is optional and can be assigned post-processing
+## Schema/data flow
 
----
+```text
+argus load
+  -> repositories/files/snippets
 
-## Data Flow
+argus generate_functionalities
+  -> functionalities
+  -> snippets.processed=true
+  -> trigger updates files/repositories processed
 
-1. **Repositories ingested**
-2. Files extracted and stored in `files`
-3. Files split into `snippets`
-4. Snippets analyzed → `functionalities`
-5. Functionalities optionally clustered via `cluster_id`
+argus split
+  -> repositories.split
 
----
+argus cluster --mode ...
+  -> functionalities.cluster_id
 
-## Design Highlights
-
-* **Pipeline-friendly:** `processed` flags allow resumable workflows
-* **Efficient queries:** composite indexes support fast filtering
-* **Cascade deletes:** deleting a repository removes all dependent data
-* **Extensible:** `functionalities.cluster_id` enables future clustering without schema changes
-
----
-
-## Future Extensions (Suggested)
-
-### `clusters` (optional)
-
-If clustering becomes a first-class concept:
-
-* `cluster_id` (PK)
-* `label` (optional human-readable label)
-
----
-
-### Prediction Tables
-
-#### `repository_predictions`
-
-* `id` (PK)
-* `repository_id` (FK)
-* `classification`
-* `probabilities_json` (jsonb)
-* `created_at`
-
-#### `file_flags`
-
-* `id` (PK)
-* `file_id` (FK)
-* `flags_json` (jsonb)
-* `justification`
-* `created_at`
-
----
-
-## Summary
-
-The schema is designed for **multi-stage code intelligence processing**, enabling:
-
-* Fine-grained code analysis (snippet level)
-* Semantic understanding (functionality extraction)
-* Scalable ML pipelines (via tags and clusters)
-* Efficient incremental processing
+argus classify --mode ...
+  -> reads processed repositories and cluster counts
+```

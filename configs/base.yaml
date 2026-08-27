@@ -1,10 +1,12 @@
 app:
-  name: sastllm
+  name: argus
 
 log:
   level: INFO
-  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-  file: logs/sastllm.log
+  file: logs/argus.log
+  file_level: DEBUG
+  max_bytes: 10485760
+  backup_count: 5
 
 paths:
-  dataset: "../test_pipeline/test_dataset"
+  dataset: ".dataset/thesis_dataset"

@@ -1,5 +1,5 @@
 app:
-  name: sastllm
+  name: argus
 
 models:
   snippet_processor:

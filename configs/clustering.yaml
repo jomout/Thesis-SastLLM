@@ -1,14 +1,28 @@
 clustering:
+  evaluation:
+    sample_size: 100000
+    silhouette_sample_size: 5000
+    silhouette_samples_per_cluster: 5
+    silhouette_metric: "euclidean"
+    random_state: 42
+    elbow_window_factor: 2.0
+    max_silhouette_singleton_fraction: 0.5
+
   search:
     grid_search: [1908726]
     save_model_dir: "models/clustering/searching_models"
-    save_plots_dir: "plots/clustering/searching"
     random_state: 42
+    batch_size: 1000
+    min_samples_per_cluster: 20
+    num_k_candidates: 30
 
   train:
     k: 10661
     save_model_dir: "models/clustering/trained_models"
+    random_state: 42
+    batch_size: 1000
 
   test:
     k: 10661
-    load_model_file: "models/clustering/trained_models/clusterer_k_10661.joblib"
+    load_model_dir: "models/clustering/trained_models/clusterer_10661_20260827_191859"
+    batch_size: 1000

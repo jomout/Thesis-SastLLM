@@ -2,23 +2,24 @@ import glob
 import json
 import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
-from sastllm.configs import get_logger
-from sastllm.db import FunctionalityManager, SnippetManager
-from sastllm.dtos import CreateFunctionalityDto
-from sastllm.dtos.update_dtos import UpdateSnippetDto
-from sastllm.ml.repository_classifier import ClassifierConfig, RepositoryClassifier
-from sastllm.processors import (
+from argus.classification import ClassificationConfig, RepositoryClassificationService
+from argus.clustering import FunctionalityClusteringService
+from argus.configs import get_logger
+from argus.db import FunctionalityManager, SnippetManager
+from argus.dtos import CreateFunctionalityDto
+from argus.dtos.update_dtos import UpdateSnippetDto
+from argus.processors import (
     BatchFileProcessor,
     BatchFilesGenerator,
     CodeProcessor,
     SnippetProcessor,
-    TagProcessor,
 )
-from sastllm.utils.dataset_splitter import DatasetSplitter
+from argus.utils.dataset_splitter import DatasetSplitter
+from argus.utils.observability import log_duration
 
-from .utils import get_classification_config, get_model, load_yaml
+from .utils import get_model, load_yaml
 
 logger = get_logger(__name__)
 
@@ -31,22 +32,23 @@ def load_dataset() -> None:
         config = load_yaml()
 
         # Load dataset
-        sastllm_dataset: Optional[str] = config.get("paths", {}).get("dataset")
+        dataset: str | None = config.get("paths", {}).get("dataset")
 
-        if not sastllm_dataset:
+        if not dataset:
             msg = "`paths.dataset` is not defined in the YAML config."
-            logger.error(msg)
+            logger.exception(msg)
             raise ValueError(msg)
 
-        logger.info(f"Loading dataset from: {sastllm_dataset}")
+        logger.info("Loading dataset", dataset_path=dataset)
 
         loader = CodeProcessor(
-            root_path=sastllm_dataset,
+            root_path=dataset,
         )
-        loader.run()
+        with log_duration(logger, "dataset_load", dataset_path=dataset):
+            loader.run()
 
     except Exception as e:
-        logger.error(f"Dataset loading failed: {e}")
+        logger.exception("Dataset loading failed", error=str(e))
         raise RuntimeError(f"Dataset loading failed: {e}") from e
 
 
@@ -62,9 +64,11 @@ def split_dataset() -> None:
     train_size = config["split"]["training"]["ratio"]
     test_size = config["split"]["testing"]["ratio"]
 
+    logger.info("Split configuration loaded", model_name=model_name, train_size=train_size, test_size=test_size)
     database_splitter = DatasetSplitter(model_name=model_name)
-    database_splitter.embed_all_repositories()
-    database_splitter.split_repositories(train_size=train_size, test_size=test_size)
+    with log_duration(logger, "dataset_split", model_name=model_name, train_size=train_size, test_size=test_size):
+        # database_splitter.embed_all_repositories()
+        database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 
 
 def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
@@ -78,12 +82,14 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
-    processor = TagProcessor(batch_size=100, collection_name=collection_name)
+    logger.info("Clustering configuration loaded", mode=mode, collection_name=collection_name)
+    processor = FunctionalityClusteringService(collection_name=collection_name, embedding_model_name=model_name)
 
     try:
-        processor.run(mode=mode)
+        with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):
+            processor.run(mode=mode)
     except Exception as e:
-        logger.error(f"Functionality clustering failed: {e}")
+        logger.exception("Functionality clustering failed", mode=mode, error=str(e))
         raise RuntimeError(f"Functionality clustering failed: {e}") from e
 
 
@@ -92,8 +98,10 @@ def generate_functionalities_batch_api() -> None:
     batch_files_dir = Path("api_batches_extra")
     batch_files_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Generating batch API files", model=model, batch_files_dir=str(batch_files_dir))
     gen = BatchFilesGenerator(model=model)
-    gen.create_api_batches(output_dir=batch_files_dir)
+    with log_duration(logger, "generate_functionality_batch_files", model=model):
+        gen.create_api_batches(output_dir=batch_files_dir)
 
     batch_results_dir = Path("batch_results_extra")
     batch_results_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +112,8 @@ def generate_functionalities_batch_api() -> None:
         poll_interval=60,  # check every 60 seconds
         max_wait_hours=30,
     )
-    processor.process_all()
+    with log_duration(logger, "process_functionality_batch_files", batch_files_dir=str(batch_files_dir), output_dir=str(batch_results_dir)):
+        processor.process_all()
 
 
 def generate_functionalities() -> None:
@@ -122,45 +131,48 @@ def generate_functionalities() -> None:
     )
 
     try:
-        processor.run()
+        with log_duration(logger, "functionality_generation", batch_size=processor.batch_size, sleep_interval=processor.sleep_interval):
+            processor.run()
     except Exception as e:
-        logger.error(f"Functionality generation failed: {e}")
+        logger.exception("Functionality generation failed", error=str(e))
         raise RuntimeError(f"Functionality generation failed: {e}") from e
 
 
-def classify_repositories(mode: Literal["train", "test"]) -> None:
+def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
     """
     Classify repositories by their clusters using ML.
     """
     logger.info("Classifying repositories by their clusters using ML.")
 
-    # Pull params from YAML and thread them as kwargs everywhere
-    save_dir, params = get_classification_config(mode=mode)
-
-    config = ClassifierConfig(**params)
-
-    binary_classifier = RepositoryClassifier(
-        config=config,
+    config = ClassificationConfig.from_yaml(mode=mode)
+    logger.info(
+        "Classification configuration loaded",
+        mode=mode,
+        model=config.model.name,
+        k=config.training.k,
+        batch_size=config.training.batch_size,
+        epochs=config.training.epochs,
     )
+    service = RepositoryClassificationService(config=config, build_bundle=mode != "search")
 
     try:
-        if mode == "train":
-            model_dir = binary_classifier.fit(save_dir=save_dir)
-            print("Model saved to: %s", model_dir)
-
-            # Evaluate on train and test sets
-            binary_classifier.evaluate(split="train", model_dir=model_dir)
+        if mode == "search":
+            with log_duration(logger, "repository_classification_search"):
+                service.search()
+        elif mode == "train":
+            with log_duration(logger, "repository_classification_train"):
+                model_dir = service.fit()
+            print(f"Model saved to: {model_dir}")
+            with log_duration(logger, "repository_classification_evaluate", split="train", model_dir=str(model_dir)):
+                service.evaluate(split="train", model_dir=model_dir)
         else:
-            load_dir = save_dir
-            if load_dir is None:
-                msg = "In 'test' mode, 'model_dir' must be specified."
-                logger.error(msg)
-                raise ValueError(msg)
-            binary_classifier.test(model_dir=load_dir)
-            binary_classifier.evaluate(split="test", model_dir=load_dir)
+            with log_duration(logger, "repository_classification_test"):
+                service.test()
+            with log_duration(logger, "repository_classification_evaluate", split="test"):
+                service.evaluate(split="test")
 
     except Exception as e:
-        logger.error(f"Repository classification failed: {e}")
+        logger.exception("Repository classification failed", mode=mode, error=str(e))
         raise RuntimeError(f"Repository classification failed: {e}") from e
 
 
@@ -178,8 +190,8 @@ def test_pipeline() -> None:
 
 def load_functionalities_from_dir(directory: str) -> None:
     """Load all JSON files from a directory into Pydantic DTOs."""
-    all_functionalities: List[CreateFunctionalityDto] = []
-    all_snippets: List[UpdateSnippetDto] = []
+    all_functionalities: list[CreateFunctionalityDto] = []
+    all_snippets: list[UpdateSnippetDto] = []
     for file_path in glob.glob(f"{directory}/*.json"):
         with open(file_path, "r", encoding="utf-8") as f:
             filename = os.path.basename(file_path)
@@ -192,9 +204,17 @@ def load_functionalities_from_dir(directory: str) -> None:
             all_snippets.append(UpdateSnippetDto(snippet_id=snippet_id, processed=True))
 
     functionality_db = FunctionalityManager()
-    functionality_db.add_bulk_functionalities(all_functionalities)
+    logger.info("Loading cached functionalities", directory=directory, files=len(glob.glob(f"{directory}/*.json")))
+    with log_duration(
+        logger,
+        "load_cached_functionalities",
+        directory=directory,
+        functionalities=len(all_functionalities),
+        snippets=len(all_snippets),
+    ):
+        functionality_db.add_bulk_functionalities(all_functionalities)
 
-    snippet_db = SnippetManager()
-    snippet_db.update_bulk_snippets(all_snippets)
+        snippet_db = SnippetManager()
+        snippet_db.update_bulk_snippets(all_snippets)
 
     logger.info(f"Inserted {len(all_functionalities)} functionalities from {directory}")

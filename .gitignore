@@ -15,11 +15,15 @@ __pycache__
 *.egg-info
 *.txt
 *.log
+*.dump
 
 build/
 
-backup.sql
+backup*.sql
 
 test*.py
 
 qdrant*/
+
+models/classification/searching_models/*
+models/classification/trained_models/*
