@@ -32,8 +32,8 @@ classification:
     params:
       k: 10661
       seed: 42
-      use_weighted_sampler: true
-      use_class_weights: false
+      use_weighted_sampler: false
+      use_class_weights: true
     grid_search:
       lr: [0.0001, 0.0005, 0.001]
       weight_decay: [0.0001, 0.0005, 0.001]
@@ -57,7 +57,7 @@ classification:
 
   test:
     model: transformer
-    load_model_dir: "models/classification/trained_models/model_20260827_203210" #NEW_BEST_TRANSFORMER
+    load_model_dir: "models/classification/selected_models/model_20260827_203210_transformer"
     params:
       k: 10661
       lr: 0.0001

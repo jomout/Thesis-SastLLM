@@ -1,0 +1,99 @@
+{
+  "artifact_type": "repository_classifier",
+  "created_at": "2026-08-27T20:32:12.845196+00:00",
+  "encoder": {
+    "matrix_normalization": false,
+    "name": "ClusterDistributionEncoder",
+    "num_clusters": 10661
+  },
+  "files": {
+    "config.json": {
+      "bytes": 238,
+      "sha256": "a023d2cda8fa9a6473d80b158604162e4476ebfef6487a9938c2db6196ec114e"
+    },
+    "meta.json": {
+      "bytes": 548,
+      "sha256": "5848b8d571bc3ab09f983f70d3e2b326e15936e5279be06c45c3eb608eedc603"
+    },
+    "model.ckpt": {
+      "bytes": 19603905,
+      "sha256": "6d0b7f55c6609d7104fd38bc3b4bcb6d26a0504ed56b7fbbd842f0889745baa3"
+    },
+    "model.onnx": {
+      "bytes": 6754241,
+      "sha256": "7aca62754590e9c6d1c59213dc77ccd033cbc5b6bccd5a4ceef7fab9e6eea80e"
+    },
+    "model.pt": {
+      "bytes": 6533071,
+      "sha256": "bc30bdf24c284bde0883473a1f71cd463906b415181425db7c412b3e0eaa866c"
+    }
+  },
+  "input": {
+    "batch_dimension_dynamic": true,
+    "dtype": "float32",
+    "encoding": "cluster_distribution",
+    "name": "features",
+    "shape": [
+      null,
+      10661
+    ]
+  },
+  "labels": {
+    "0": "benign",
+    "1": "malicious"
+  },
+  "model": {
+    "dropout": 0.2,
+    "embedding_dim": 128,
+    "feedforward_dim": 256,
+    "input_encoding": "cluster_distribution",
+    "max_sequence_length": 256,
+    "name": "transformer",
+    "num_heads": 4,
+    "num_layers": 2,
+    "pooling": "mean",
+    "truncation": "first"
+  },
+  "output": {
+    "dtype": "float32",
+    "name": "logits",
+    "shape": [
+      null,
+      2
+    ]
+  },
+  "schema_version": 1,
+  "source": "./tb_logs/repo_classifier/version_181/checkpoints/epoch10-val_acc0.9837.ckpt",
+  "source_type": "best",
+  "training": {
+    "batch_size": 16,
+    "epochs": 50,
+    "k": 10661,
+    "l1_lambda": 0.001,
+    "lr": 0.0001,
+    "num_workers": 4,
+    "seed": 42,
+    "use_class_weights": true,
+    "use_weighted_sampler": false,
+    "validation_size": 0.1,
+    "weight_decay": 0.0001
+  },
+  "validation": {
+    "absolute_tolerance": 1e-05,
+    "maximum_absolute_error": 1.9073486328125e-06,
+    "maximum_relative_error": 3.754350643703219e-07,
+    "onnx_pytorch_logits_close": true,
+    "onnx_pytorch_predictions_equal": true,
+    "relative_tolerance": 0.0001,
+    "samples": 16
+  },
+  "versions": {
+    "lightning": "2.6.5",
+    "numpy": "2.5.2",
+    "onnx": "1.22.0",
+    "onnxruntime": "1.29.0",
+    "onnxscript": "0.7.1",
+    "python": "3.14.7",
+    "torch": "2.13.0+cpu"
+  }
+}

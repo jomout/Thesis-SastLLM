@@ -25,7 +25,7 @@ No single metric proves that a K is correct. The pipeline therefore reports cohe
 
 | Mode     | Input                                        | Purpose                                                   | Main side effects                                                                                        |
 | -------- | -------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `search` | first `n` vectors from the Qdrant collection | compare candidate K values and select one                 | writes candidate reports, plots, selected model, and final quality report                                |
+| `search` | up to `n` Qdrant vectors with `split=train`  | compare candidate K values and select one                 | writes candidate reports, plots, selected model, and final quality report                                |
 | `train`  | Qdrant vectors with `split=train`            | fit the chosen K and validate it on the full train stream | writes the trained model and train quality report; updates train functionality cluster ids in PostgreSQL |
 | `test`   | Qdrant vectors with `split=test`             | apply the frozen trained model                            | updates test functionality cluster ids in PostgreSQL                                                     |
 
@@ -84,16 +84,16 @@ clustering:
 
 Parameter guidance:
 
-| Parameter                           | Research meaning                                                           |
-| ----------------------------------- | -------------------------------------------------------------------------- |
-| `grid_search`                       | population sizes to investigate; each value starts an independent search   |
-| `min_samples_per_cluster`           | limits the largest candidate to `n // min_samples_per_cluster`             |
-| `num_k_candidates`                  | number of logarithmically spaced K values                                  |
-| `sample_size`                       | fixed reservoir used to compare candidates and initialize models           |
-| `silhouette_sample_size`            | maximum rows used in the quadratic silhouette calculation                  |
-| `silhouette_samples_per_cluster`    | target minimum representation of each selected silhouette cluster          |
-| `elbow_window_factor`               | limits automatic silhouette/CH selection to the inertia-elbow neighborhood |
-| `max_silhouette_singleton_fraction` | rejects silhouette evidence from an excessively fragmented reservoir       |
+| Parameter                           | Research meaning                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| `grid_search`                       | maximum train-population sizes to investigate; each value starts an independent search |
+| `min_samples_per_cluster`           | limits the largest candidate to `n // min_samples_per_cluster`                         |
+| `num_k_candidates`                  | number of logarithmically spaced K values                                              |
+| `sample_size`                       | fixed reservoir used to compare candidates and initialize models                       |
+| `silhouette_sample_size`            | maximum rows used in the quadratic silhouette calculation                              |
+| `silhouette_samples_per_cluster`    | target minimum representation of each selected silhouette cluster                      |
+| `elbow_window_factor`               | limits automatic silhouette/CH selection to the inertia-elbow neighborhood             |
+| `max_silhouette_singleton_fraction` | rejects silhouette evidence from an excessively fragmented reservoir                   |
 
 Keep `sample_size` comfortably above the expected K. The current `100000` supports the expected range around `K=10661`, while keeping the full dataset out of memory.
 
@@ -105,14 +105,15 @@ uv run argus cluster --mode search
 
 For each `n`, the command:
 
-1. Creates one seeded uniform reservoir of normalized embeddings.
-2. Generates logarithmically spaced candidate K values.
-3. Fits a streaming MiniBatchKMeans model for every candidate.
-4. Evaluates every candidate against the same reservoir.
-5. Detects an inertia elbow.
-6. Selects the best reliable silhouette result near that elbow.
-7. Falls back to Calinski-Harabasz and then the elbow when silhouette is unreliable.
-8. Refits the selected K and evaluates cohesion and cluster sizes over the full stream.
+1. Reads at most `n` embeddings with `split=train`, capping `n` to the available training population.
+2. Creates one seeded uniform reservoir of normalized embeddings.
+3. Generates logarithmically spaced candidate K values from the effective training-population size.
+4. Fits a streaming MiniBatchKMeans model for every candidate.
+5. Evaluates every candidate against the same reservoir.
+6. Detects an inertia elbow.
+7. Selects the best reliable silhouette result near that elbow.
+8. Falls back to Calinski-Harabasz and then the elbow when silhouette is unreliable.
+9. Refits the selected K and evaluates cohesion and cluster sizes over the full train-only stream.
 
 Search may be expensive. With 30 candidates and approximately 1.9 million embeddings, the source is scanned repeatedly and each candidate stores K centroids. Progress is shown as `Evaluating candidate K`.
 

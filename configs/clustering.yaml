@@ -9,7 +9,7 @@ clustering:
     max_silhouette_singleton_fraction: 0.5
 
   search:
-    grid_search: [1908726]
+    grid_search: [1291731]
     save_model_dir: "models/clustering/searching_models"
     random_state: 42
     batch_size: 1000

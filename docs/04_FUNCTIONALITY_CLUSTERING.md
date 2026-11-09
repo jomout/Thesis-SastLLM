@@ -31,11 +31,11 @@ sentence-transformers_all-mpnet-base-v2
 
 The train/test source is filtered by Qdrant payload:
 
-| Mode     | Qdrant payload filter                       |
-| -------- | ------------------------------------------- |
-| `train`  | `split == "train"`                          |
-| `test`   | `split == "test"`                           |
-| `search` | no split filter; reads first `n` embeddings |
+| Mode     | Qdrant payload filter                          |
+| -------- | ---------------------------------------------- |
+| `train`  | `split == "train"`                             |
+| `test`   | `split == "test"`                              |
+| `search` | `split == "train"`; reads up to `n` embeddings |
 
 Each yielded item is:
 
@@ -98,7 +98,7 @@ This is a breaking artifact-format change. Existing standalone joblib or ONNX fi
 
 For each value `n` in `search.grid_search`:
 
-1. Read up to `n` embeddings from Qdrant.
+1. Read up to `n` train-split embeddings from Qdrant. If fewer than `n` are available, use the complete training population and use its actual size for candidate calculations and artifact names.
 2. Build one seeded reservoir sample of up to `evaluation.sample_size` normalized embeddings.
 3. Compute `k_max = n // m_min`, where `m_min` defaults to `20`.
 4. Build logarithmically spaced candidate values between `2` and `k_max`.

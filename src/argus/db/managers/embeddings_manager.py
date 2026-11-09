@@ -267,6 +267,7 @@ class EmbeddingsManager:
         field: str,
         values: str | list[str],
         batch_size: int = 1000,
+        limit: int | None = None,
     ) -> Iterable[tuple[int, np.ndarray]]:
         """
         Lazily yields embeddings (and their IDs) matching the given payload field values.
@@ -275,6 +276,7 @@ class EmbeddingsManager:
             field (str): The payload field to filter on.
             values (str | list[str]): The value(s) to match in the specified field.
             batch_size (int): Number of embeddings to fetch per batch.
+            limit (int | None): Maximum number of matching embeddings to yield.
 
         Yields:
             Iterable[tuple[int, np.ndarray]]: Tuples of (ID, embedding vector).
@@ -282,6 +284,10 @@ class EmbeddingsManager:
         # Normalize to list
         if isinstance(values, str):
             values = [values]
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0.")
+        if limit is not None and limit <= 0:
+            raise ValueError("limit must be > 0 when provided.")
 
         # Qdrant expects OR logic in "should"
         query_filter = models.Filter(should=[models.FieldCondition(key=field, match=models.MatchValue(value=v)) for v in values])
@@ -294,13 +300,17 @@ class EmbeddingsManager:
             field=field,
             values=values,
             batch_size=batch_size,
+            limit=limit,
         )
 
         while True:
+            scroll_limit = batch_size if limit is None else min(batch_size, limit - yielded)
+            if scroll_limit <= 0:
+                break
             points, next_page = self.grpc.scroll(
                 collection_name=collection_name,
                 scroll_filter=query_filter,
-                limit=batch_size,
+                limit=scroll_limit,
                 offset=next_page,
                 with_payload=False,
                 with_vectors=True,
@@ -312,8 +322,10 @@ class EmbeddingsManager:
             for p in points:
                 yielded += 1
                 yield int(p.id), np.asarray(p.vector, dtype=np.float32)
+                if limit is not None and yielded >= limit:
+                    break
 
-            if next_page is None:
+            if next_page is None or (limit is not None and yielded >= limit):
                 break
         logger.debug("Completed filtered Qdrant embedding stream", collection=collection_name, embeddings=yielded, field=field)
 

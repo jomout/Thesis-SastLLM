@@ -58,15 +58,29 @@ class FunctionalityClusteringService:
         logger.info(
             "Searching for clustering k",
             collection_name=self.collection_name,
+            split="train",
             grid_search=cfg.grid_search,
             batch_size=cfg.batch_size,
             min_samples_per_cluster=cfg.min_samples_per_cluster,
         )
 
-        for n in cfg.grid_search:
-            source = self.embedding_repository.first_n(n)
+        train_count = self.embedding_repository.count_for_split("train")
+        if train_count <= 2:
+            raise ValueError(f"Cannot search for K; only {train_count} training embeddings are available.")
+
+        for requested_n in cfg.grid_search:
+            n = min(requested_n, train_count)
+            if n < requested_n:
+                logger.warning(
+                    "Capped clustering search population to available training embeddings",
+                    requested_embeddings=requested_n,
+                    available_embeddings=train_count,
+                    effective_embeddings=n,
+                    split="train",
+                )
+            source = self.embedding_repository.for_split("train", limit=n)
             evaluator = self._quality_evaluator()
-            with log_duration(logger, "cluster_search_sample", n=n):
+            with log_duration(logger, "cluster_search_sample", split="train", n=n, requested_n=requested_n):
                 evaluation_sample = reservoir_sample(
                     source,
                     sample_size=min(evaluation_cfg.sample_size, n),

@@ -117,6 +117,39 @@ Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)
 
 Classifier architectures are defined under the top-level `models` registry and selected through `classification.<mode>.model`: `mlp`, `lstm`, or `transformer`. Set `models.transformer.input_encoding` to `"ordered_tokens"` for order-aware functionality sequences or `"cluster_distribution"` for aggregate cluster-frequency attention. A practical starting profile is `embedding_dim: 128`, `num_heads: 4`, `num_layers: 2`, `feedforward_dim: 256`, `pooling: "mean"`, and `max_sequence_length: 256`.
 
+### SHAP explanations
+
+Explain the classifier selected by `classification.test`:
+
+```bash
+argus explain-shap \
+  --class malicious \
+  --split test \
+  --background-split train \
+  --background-samples 200 \
+  --explanation-samples 16 \
+  --top-features 30 \
+  --output-dir plots/shap
+```
+
+The command reuses the test-mode model profile, cluster count, label mapping, encoder, dataset splits, and `load_model_dir`. It verifies the classifier manifest and checksum contract before computing explanations. `GradientExplainer` currently supports the MLP and the Transformer with `input_encoding: "cluster_distribution"`; ordered-token LSTM and Transformer inputs are discrete and are rejected with an actionable error.
+
+The output directory contains `shap_values.npy`, the explained input rows, repository ids and labels, `meta.json`, a global summary plot, a signed-mean plot, and a waterfall plot for the first explained repository. Use `--config-path` for a non-default classification YAML and `--device cpu|cuda|auto` to control execution.
+
+### Confusion-matrix plots
+
+Evaluate the classifier selected by `classification.test` and plot its confusion matrix:
+
+```bash
+argus confusion-matrix \
+  --split test \
+  --log-scale \
+  --format png \
+  --output-dir plots/confusion_matrix
+```
+
+The command uses the configured model profile, encoder, labels, split, and `load_model_dir`, and verifies the classifier bundle before inference. It writes count and row-normalized plots plus a JSON file containing the underlying matrices and headline metrics. Use a distinct output directory for each model comparison, such as `plots/confusion_matrix/mlp` and `plots/confusion_matrix/transformer`.
+
 ### Repository encoding inspection
 
 ```bash
