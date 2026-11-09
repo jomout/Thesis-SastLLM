@@ -153,6 +153,8 @@ class RepositoryClassificationService:
         with log_duration(logger, "lightning_predict", split=split, model_dir=str(resolved_model_dir)):
             predictions = self._trainer().predict(model, dataloaders=dataloader)
 
+        if not predictions:
+            raise RuntimeError(f"The {split!r} split contains no repositories to predict.")
         ids = torch.cat([batch[0].cpu() for batch in predictions]).numpy()  # type: ignore[index]
         logits = torch.cat([batch[1].cpu() for batch in predictions]).numpy()  # type: ignore[index]
         probabilities = torch.softmax(torch.tensor(logits), dim=1).numpy()
@@ -225,7 +227,18 @@ class RepositoryClassificationService:
         )
 
     def datamodule(self) -> RepositoryDataModule:
+        """Return a data module backed by the service's encoded repository bundle."""
         return self._datamodule()
+
+    def load_model(
+        self,
+        model_dir: str | Path | None = None,
+        *,
+        verify_bundle: bool = True,
+    ) -> RepositoryClassifierModule:
+        """Load the configured classifier checkpoint and verify its artifact contract."""
+        resolved_model_dir = Path(model_dir) if model_dir is not None else self._load_model_dir()
+        return self._load_checkpoint(resolved_model_dir, verify_bundle=verify_bundle)
 
     def _build_model(self) -> RepositoryClassifierModule:
         if self.bundle is None:

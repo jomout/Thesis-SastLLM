@@ -70,12 +70,15 @@ class QdrantEmbeddingRepository:
         self.collection_name = collection_name
         self.embeddings_manager = embeddings_manager or EmbeddingsManager()
 
-    def for_split(self, split: str) -> EmbeddingSource:
+    def for_split(self, split: str, *, limit: int | None = None) -> EmbeddingSource:
+        if limit is not None and limit <= 0:
+            raise ValueError("limit must be > 0 when provided.")
         return EmbeddingSource(
             lambda: self.embeddings_manager.get_embeddings_by_payload_field(
                 collection_name=self.collection_name,
                 field="split",
                 values=[split],
+                limit=limit,
             )
         )
 

@@ -27,3 +27,7 @@ qdrant*/
 
 models/classification/searching_models/*
 models/classification/trained_models/*
+
+models/clustering/searching_models/*
+models/clustering/trained_models/*
+plots

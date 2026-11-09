@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -17,6 +18,24 @@ class ClassificationMode(str, Enum):
     search = "search"
     train = "train"
     test = "test"
+
+
+class RepositorySplit(str, Enum):
+    train = "train"
+    val = "val"
+    test = "test"
+
+
+class ComputeDevice(str, Enum):
+    auto = "auto"
+    cpu = "cpu"
+    cuda = "cuda"
+
+
+class PlotFormat(str, Enum):
+    png = "png"
+    pdf = "pdf"
+    svg = "svg"
 
 
 logger = get_logger(__name__)
@@ -110,6 +129,62 @@ def run_classify(
 
     logger.info("Starting classification pipeline.")
     classify_repositories(mode=mode.value)
+
+
+@app.command("explain-shap")
+def run_explain_shap(
+    config_path: Annotated[Path, typer.Option(help="Classification YAML containing the test model contract.")] = Path("configs/classification.yaml"),
+    output_dir: Annotated[Path, typer.Option(help="Directory for SHAP arrays, metadata, and plots.")] = Path("plots/shap"),
+    explained_class: Annotated[str, typer.Option("--class", help="Configured label whose probability should be explained.")] = "malicious",
+    split: Annotated[RepositorySplit, typer.Option(help="Repository split to explain.")] = RepositorySplit.test,
+    background_split: Annotated[RepositorySplit, typer.Option(help="Repository split used as the SHAP background.")] = RepositorySplit.train,
+    background_samples: Annotated[int, typer.Option(min=1, help="Maximum number of background repositories.")] = 200,
+    explanation_samples: Annotated[int, typer.Option(min=1, help="Maximum number of repositories to explain.")] = 16,
+    top_features: Annotated[int, typer.Option(min=1, help="Maximum number of features displayed in each plot.")] = 30,
+    device: Annotated[ComputeDevice, typer.Option(help="Compute device; auto selects CUDA when available.")] = ComputeDevice.auto,
+    seed: Annotated[int | None, typer.Option(help="SHAP sampling seed; defaults to classification.test.params.seed.")] = None,
+) -> None:
+    """Explain the configured repository classifier with SHAP."""
+    from argus.utils.explain_shapley import ShapExplanationConfig, run_shap
+
+    output_path = run_shap(
+        ShapExplanationConfig(
+            classification_config_path=config_path,
+            output_dir=output_dir,
+            explained_class=explained_class,
+            split=split.value,
+            background_split=background_split.value,
+            background_samples=background_samples,
+            explanation_samples=explanation_samples,
+            top_features=top_features,
+            device=device.value,
+            seed=seed,
+        )
+    )
+    typer.echo(f"SHAP artifacts written to {output_path}")
+
+
+@app.command("confusion-matrix")
+def run_confusion_matrix_command(
+    config_path: Annotated[Path, typer.Option(help="Classification YAML containing the test model contract.")] = Path("configs/classification.yaml"),
+    output_dir: Annotated[Path, typer.Option(help="Directory for confusion-matrix plots and metadata.")] = Path("plots/confusion_matrix"),
+    split: Annotated[RepositorySplit, typer.Option(help="Repository split to evaluate.")] = RepositorySplit.test,
+    log_scale: Annotated[bool, typer.Option("--log-scale/--linear-scale", help="Use logarithmic colors for the count matrix.")] = True,
+    image_format: Annotated[PlotFormat, typer.Option("--format", help="Plot image format.")] = PlotFormat.png,
+) -> None:
+    """Evaluate the configured classifier and plot its confusion matrix."""
+    from argus.utils.confusion_matrix import ConfusionMatrixConfig, run_confusion_matrix
+
+    output_path = run_confusion_matrix(
+        ConfusionMatrixConfig(
+            classification_config_path=config_path,
+            output_dir=output_dir,
+            split=split.value,
+            log_scale=log_scale,
+            image_format=image_format.value,
+        )
+    )
+    typer.echo(f"Confusion-matrix artifacts written to {output_path}")
 
 
 # --- Pipelines ---

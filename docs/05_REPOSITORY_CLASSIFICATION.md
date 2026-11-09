@@ -8,6 +8,8 @@ This stage converts clustered functionality ids into repository-level vectors an
 argus classify --mode search
 argus classify --mode train
 argus classify --mode test
+argus explain-shap
+argus confusion-matrix
 argus-inspect-distribution --repository-id <id>
 argus-inspect-timeseries --repository-id <id>
 argus train
@@ -301,6 +303,44 @@ models:
 In this mode, `max_sequence_length: 256` means at most 256 nonzero cluster-frequency tokens are passed to attention for each repository. `ClusterDistributionEncoder` already normalizes each repository by its functionality count; the service disables the additional dataset-wide matrix normalization for this path.
 
 For testing, set `classification.test.model` to `transformer` and point `load_model_dir` to the trained Transformer directory. Selecting the same shared profile ensures the test encoder uses the training sequence length and truncation policy. Model architecture parameters are also restored from the checkpoint.
+
+## SHAP explanations
+
+`argus explain-shap` explains the class probability produced by the classifier configured under `classification.test`. It constructs the same encoder and data module as classification, loads the checkpoint through `RepositoryClassificationService`, and verifies the saved manifest, checksums, model profile, `k`, labels, and encoder contract.
+
+```bash
+argus explain-shap --class malicious --split test --output-dir plots/shap
+```
+
+The train split is the default SHAP background. Sampling is deterministic: repositories retain data-module order and SHAP uses `classification.test.params.seed` unless `--seed` overrides it. Sample limits, the background split, displayed feature count, configuration path, and compute device are CLI options; run `argus explain-shap --help` for the complete interface.
+
+The current gradient-based explanation path requires floating-point cluster-distribution features. It supports MLP and cluster-distribution Transformer classifiers. It does not reinterpret discrete ordered-token inputs as continuous values, so LSTM and ordered-token Transformer configurations fail before checkpoint explanation with an explicit compatibility error.
+
+Artifacts written under the selected output directory are:
+
+- `shap_values.npy`, `inputs.npy`, `labels.npy`, and `ids.npy`
+- `summary_bar.png` for global mean absolute importance
+- `signed_mean.png` for the direction of average class-probability contributions
+- `local_waterfall.png` for the first explained repository
+- `meta.json` with the model profile, source splits, seed, class index, and base value
+
+## Confusion-matrix plots
+
+`argus confusion-matrix` evaluates the classifier configured under `classification.test` through `RepositoryClassificationService`. It therefore uses the same model factory, encoder, repository split, label mapping, checkpoint loader, and manifest verification as normal test evaluation. Unlike the legacy plotting utility, it does not contain manually entered confusion-matrix values or execute plotting at import time.
+
+```bash
+argus confusion-matrix --split test --output-dir plots/confusion_matrix
+```
+
+The count plot uses logarithmic colors by default so minority-class errors remain visible next to the larger benign counts. Pass `--linear-scale` for a linear count plot. The normalized plot always uses a linear scale and divides each row by its true-class support, making every row interpretable as recall proportions. Empty true-class rows remain zero rather than producing `NaN` values.
+
+The command supports MLP, LSTM, and Transformer classifiers because it explains no input gradients; it performs standard frozen-model inference. It writes:
+
+- `<split>_confusion_matrix_counts.<format>`
+- `<split>_confusion_matrix_normalized.<format>`
+- `<split>_confusion_matrix.json` with class names, counts, normalized values, sample count, accuracy, macro F1, weighted F1, and model metadata
+
+Supported plot formats are PNG, PDF, and SVG. Use separate output directories when comparing classifier architectures to avoid overwriting plots with the same split name.
 
 ## Class imbalance controls
 

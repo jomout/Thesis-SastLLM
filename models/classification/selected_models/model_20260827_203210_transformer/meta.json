@@ -1,0 +1,20 @@
+{
+  "saved_at": "2026-08-27T20:32:10.233005+00:00",
+  "source": "./tb_logs/repo_classifier/version_181/checkpoints/epoch10-val_acc0.9837.ckpt",
+  "source_type": "best",
+  "monitor": "val_acc",
+  "monitor_mode": "max",
+  "model": {
+    "name": "transformer",
+    "input_encoding": "cluster_distribution",
+    "embedding_dim": 128,
+    "num_layers": 2,
+    "num_heads": 4,
+    "feedforward_dim": 256,
+    "dropout": 0.2,
+    "pooling": "mean",
+    "max_sequence_length": 256,
+    "truncation": "first"
+  },
+  "encoder": "ClusterDistributionEncoder"
+}

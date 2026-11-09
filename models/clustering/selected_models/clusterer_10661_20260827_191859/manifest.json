@@ -1,0 +1,38 @@
+{
+  "algorithm": "sklearn.cluster.MiniBatchKMeans",
+  "artifact_type": "functionality_clusterer",
+  "created_at": "2026-08-27T19:28:53.273434+00:00",
+  "embedding_dimension": 768,
+  "files": {
+    "model.joblib": {
+      "bytes": 32802758,
+      "sha256": "df3e9dd09c4dbb7e70bf3c0761d3098a32b097cfc59d2389437237dc195a7fd3"
+    },
+    "model.onnx": {
+      "bytes": 32793891,
+      "sha256": "2b9d45b0da559cb68d331735a3990cf3ed846cb6f3a1a4492b63848d57f68bdf"
+    }
+  },
+  "input": {
+    "dtype": "float32",
+    "name": "X",
+    "normalization": "l2",
+    "shape": [null, 768]
+  },
+  "metadata": {
+    "clusterer": "MiniBatchKMeans",
+    "embedding_collection": "sentence-transformers_all-mpnet-base-v2",
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "normalize_embeddings": true,
+    "random_state": 42,
+    "schema_version": 1
+  },
+  "n_clusters": 10661,
+  "schema_version": 1,
+  "validation": {
+    "input_name": "X",
+    "onnx_sklearn_prediction_parity": true,
+    "output_name": "label",
+    "samples": 32
+  }
+}
