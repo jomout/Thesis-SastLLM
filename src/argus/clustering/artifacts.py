@@ -6,12 +6,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import joblib  # type: ignore[import-untyped]
 import numpy as np
 import onnxruntime as ort
-from skl2onnx import to_onnx  # type: ignore[import-untyped]
+from skl2onnx.algebra.onnx_ops import OnnxAdd, OnnxArgMin, OnnxCast, OnnxGemm, OnnxMax, OnnxReduceSumSquareApi18, OnnxSqrt  # type: ignore[import-untyped]
+from skl2onnx.common.data_types import FloatTensorType, Int64TensorType  # type: ignore[import-untyped]
 from sklearn.cluster import MiniBatchKMeans  # type: ignore[import-untyped]
 
 from argus.configs import get_logger
@@ -23,30 +25,11 @@ CLUSTERER_JOBLIB_FILENAME = "model.joblib"
 CLUSTERER_ONNX_FILENAME = "model.onnx"
 CLUSTERER_MANIFEST_FILENAME = "manifest.json"
 CLUSTERER_QUALITY_REPORT_FILENAME = "quality.json"
-
-
-@dataclass(frozen=True)
-class ClusteringRunArtifacts:
-    """Paths shared by one timestamped clustering run."""
-
-    directory: Path
-    stem: str
-
-    @property
-    def joblib_model(self) -> Path:
-        return self.directory / CLUSTERER_JOBLIB_FILENAME
-
-    @property
-    def onnx_model(self) -> Path:
-        return self.directory / CLUSTERER_ONNX_FILENAME
-
-    @property
-    def manifest(self) -> Path:
-        return self.directory / CLUSTERER_MANIFEST_FILENAME
-
-    @property
-    def quality_report(self) -> Path:
-        return self.directory / CLUSTERER_QUALITY_REPORT_FILENAME
+ONNX_PARITY_SAMPLE_SIZE = 256
+ONNX_ASSIGNMENT_DISTANCE_ATOL = 1e-6
+ONNX_ASSIGNMENT_DISTANCE_RTOL = 1e-5
+# For L2-normalized embeddings, the terms in sklearn's float32 squared-distance calculation are of order one.
+ONNX_ASSIGNMENT_SQUARED_ROUNDOFF_ATOL = float(4 * np.finfo(np.float32).eps)
 
 
 @dataclass(frozen=True)
@@ -63,67 +46,61 @@ def export_clusterer_bundle(
     model_dir: str | Path,
     metadata: Mapping[str, Any] | None,
     random_state: int,
+    validation_samples: np.ndarray,
 ) -> Path:
-    artifact_dir = Path(model_dir)
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    joblib_path = artifact_dir / CLUSTERER_JOBLIB_FILENAME
-    onnx_path = artifact_dir / CLUSTERER_ONNX_FILENAME
-    manifest_path = artifact_dir / CLUSTERER_MANIFEST_FILENAME
-
+    """Validate ONNX predictions and write a clusterer bundle with its manifest last."""
     centers = np.asarray(model.cluster_centers_, dtype=np.float32)
-    n_clusters = int(model.n_clusters)
-    onnx_model = to_onnx(model, centers[:1])
-    onnx_bytes = onnx_model.SerializeToString()
-    parity_samples = centers[: min(32, len(centers))]
-    validation = _validate_onnx_parity(model, onnx_bytes, parity_samples)
+    embedding_dimension = centers.shape[1]
+    samples = _select_validation_samples(validation_samples, embedding_dimension=embedding_dimension)
+    onnx_bytes = _export_onnx_model(centers)
+    validation = _validate_onnx_parity(model, onnx_bytes, samples)
 
-    artifact_metadata = dict(metadata or {})
-    artifact_metadata.update(
-        {
+    model_fields = {
+        "n_clusters": int(model.n_clusters),
+        "embedding_dimension": embedding_dimension,
+        "metadata": {
+            **(metadata or {}),
             "clusterer": model.__class__.__name__,
             "random_state": random_state,
             "schema_version": ARTIFACT_SCHEMA_VERSION,
-        }
-    )
-    _atomic_joblib_dump(
-        {
-            "model": model,
-            "n_clusters": n_clusters,
-            "embedding_dimension": int(centers.shape[1]),
-            "metadata": artifact_metadata,
         },
-        joblib_path,
-    )
-    _atomic_write_bytes(onnx_path, onnx_bytes)
-
+    }
     manifest = {
+        **model_fields,
         "schema_version": ARTIFACT_SCHEMA_VERSION,
         "created_at": datetime.now(UTC).isoformat(),
         "artifact_type": "functionality_clusterer",
         "algorithm": "sklearn.cluster.MiniBatchKMeans",
-        "n_clusters": n_clusters,
-        "embedding_dimension": int(centers.shape[1]),
         "input": {
             "name": validation["input_name"],
             "dtype": "float32",
-            "shape": [None, int(centers.shape[1])],
+            "shape": [None, embedding_dimension],
             "normalization": "l2",
         },
-        "metadata": artifact_metadata,
         "validation": validation,
-        "files": {
-            joblib_path.name: _file_record(joblib_path),
-            onnx_path.name: _file_record(onnx_path),
-        },
     }
-    _atomic_write_bytes(manifest_path, json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
+    artifact_dir = Path(model_dir)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = artifact_dir / CLUSTERER_MANIFEST_FILENAME
+    with TemporaryDirectory(dir=artifact_dir) as temporary:
+        staging_dir = Path(temporary)
+        joblib_path = staging_dir / CLUSTERER_JOBLIB_FILENAME
+        onnx_path = staging_dir / CLUSTERER_ONNX_FILENAME
+        joblib.dump({"model": model, **model_fields}, joblib_path)
+        onnx_path.write_bytes(onnx_bytes)
+        manifest["files"] = {path.name: {"bytes": path.stat().st_size, "sha256": _sha256(path)} for path in (joblib_path, onnx_path)}
+        staged_manifest = staging_dir / CLUSTERER_MANIFEST_FILENAME
+        staged_manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        for path in (joblib_path, onnx_path, staged_manifest):
+            path.replace(artifact_dir / path.name)
+
     logger.info(
         "Saved clusterer artifact bundle",
         model_dir=str(artifact_dir),
-        joblib=str(joblib_path),
-        onnx=str(onnx_path),
-        manifest=str(manifest_path),
         parity_samples=validation["samples"],
+        label_mismatches=validation["label_mismatches"],
+        distance_equivalent_mismatches=validation["distance_equivalent_mismatches"],
+        float32_roundoff_mismatches=validation["float32_roundoff_mismatches"],
     )
     return manifest_path
 
@@ -133,6 +110,7 @@ def load_clusterer_bundle(
     *,
     expected_metadata: Mapping[str, Any] | None = None,
 ) -> LoadedClustererArtifact:
+    """Restore a trusted joblib model after verifying the bundle."""
     artifact_dir = Path(model_dir)
     manifest = verify_clusterer_bundle(artifact_dir, expected_metadata=expected_metadata)
     joblib_path = artifact_dir / CLUSTERER_JOBLIB_FILENAME
@@ -165,6 +143,7 @@ def load_clusterer_bundle(
 
 
 def verify_clusterer_bundle(model_dir: str | Path, *, expected_metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Check the manifest and file digests without loading the model."""
     artifact_dir = Path(model_dir)
     manifest_path = artifact_dir / CLUSTERER_MANIFEST_FILENAME
     if not manifest_path.is_file():
@@ -179,13 +158,14 @@ def verify_clusterer_bundle(model_dir: str | Path, *, expected_metadata: Mapping
     files = manifest.get("files")
     if not isinstance(files, dict):
         raise TypeError(f"Clusterer manifest does not contain file checksums: {manifest_path}")
-    expected_filenames = {CLUSTERER_JOBLIB_FILENAME, CLUSTERER_ONNX_FILENAME}
-    if set(files) != expected_filenames:
-        raise ValueError(f"Clusterer manifest must describe exactly {sorted(expected_filenames)}: {manifest_path}")
-    for filename, record in files.items():
+    expected_filenames = (CLUSTERER_JOBLIB_FILENAME, CLUSTERER_ONNX_FILENAME)
+    if files.keys() != set(expected_filenames):
+        raise ValueError(f"Clusterer manifest must describe exactly {expected_filenames}: {manifest_path}")
+    for filename in expected_filenames:
+        record = files[filename]
         artifact_path = artifact_dir / filename
         expected_hash = record.get("sha256") if isinstance(record, dict) else None
-        if not artifact_path.is_file() or not isinstance(expected_hash, str) or _file_record(artifact_path)["sha256"] != expected_hash:
+        if not artifact_path.is_file() or not isinstance(expected_hash, str) or _sha256(artifact_path) != expected_hash:
             raise ValueError(f"Clusterer artifact checksum verification failed: {artifact_path}")
 
     saved_metadata = manifest.get("metadata")
@@ -196,81 +176,118 @@ def verify_clusterer_bundle(model_dir: str | Path, *, expected_metadata: Mapping
             raise ValueError(f"Clusterer artifact metadata mismatch for {key!r}: expected {expected_value!r}, got {saved_metadata.get(key)!r}.")
 
     validation = manifest.get("validation")
-    if not isinstance(validation, dict) or validation.get("onnx_sklearn_prediction_parity") is not True:
+    # The version 1 selected model records only exact prediction parity.
+    if not isinstance(validation, dict) or validation.get("validation_passed", validation.get("onnx_sklearn_prediction_parity")) is not True:
         raise ValueError(f"Clusterer manifest does not record successful ONNX validation: {manifest_path}")
     return manifest
 
 
-def training_artifacts(root: str | Path, *, k: int, timestamp: str | None = None) -> ClusteringRunArtifacts:
-    run_timestamp = timestamp or _timestamp()
-    stem = f"clusterer_{k}_{run_timestamp}"
-    artifacts = ClusteringRunArtifacts(directory=Path(root) / stem, stem=stem)
-    logger.debug("Prepared training artifact paths", k=k, artifact_dir=str(artifacts.directory))
-    return artifacts
+def training_artifact_dir(root: Path, *, k: int) -> Path:
+    """Return the output directory for a training run."""
+    return root / f"clusterer_{k}_{_timestamp()}"
 
 
-def search_artifacts(
-    root: str | Path,
-    *,
-    n: int,
-    k: int,
-    timestamp: str | None = None,
-) -> ClusteringRunArtifacts:
-    run_timestamp = timestamp or _timestamp()
-    stem = f"clusterer_{n}_{k}_{run_timestamp}"
-    directory = Path(root) / f"clusterers_{n}_{run_timestamp}" / stem
-    artifacts = ClusteringRunArtifacts(directory=directory, stem=stem)
-    logger.debug("Prepared search artifact paths", n=n, k=k, artifact_dir=str(artifacts.directory))
-    return artifacts
+def search_artifact_dir(root: Path, *, n: int, k: int) -> Path:
+    """Return the output directory for a selected clusterer."""
+    timestamp = _timestamp()
+    return root / f"clusterers_{n}_{timestamp}" / f"clusterer_{n}_{k}_{timestamp}"
+
+
+def _export_onnx_model(centers: np.ndarray) -> bytes:
+    """Export nearest-centroid inference with a float32 interface and float64 distance arithmetic."""
+    opset = 18
+    centers = centers.astype(np.float64)
+    n_clusters, embedding_dimension = centers.shape
+    vectors = OnnxCast("X", to=np.float64, op_version=opset)
+    ranking = OnnxGemm(vectors, centers, np.sum(centers**2, axis=1), alpha=-2.0, transB=1, op_version=opset)
+    labels = OnnxArgMin(ranking, axis=1, keepdims=0, output_names=["label"], op_version=opset)
+
+    # The sample norm is constant across centroids, so add it only for the distance output.
+    sample_norms_squared = OnnxReduceSumSquareApi18(vectors, axes=[1], keepdims=1, op_version=opset)
+    squared_distances = OnnxAdd(ranking, sample_norms_squared, op_version=opset)
+    nonnegative_distances = OnnxMax(squared_distances, np.array(0, dtype=np.float64), op_version=opset)
+    scores = OnnxCast(OnnxSqrt(nonnegative_distances, op_version=opset), to=np.float32, output_names=["scores"], op_version=opset)
+    onnx_model = labels.to_onnx(
+        inputs={"X": FloatTensorType([None, embedding_dimension])},
+        outputs={"label": Int64TensorType([None]), "scores": FloatTensorType([None, n_clusters])},
+        other_outputs=[scores],
+        target_opset=opset,
+    )
+    return onnx_model.SerializeToString()
 
 
 def _validate_onnx_parity(model: MiniBatchKMeans, onnx_bytes: bytes, samples: np.ndarray) -> dict[str, Any]:
     session = ort.InferenceSession(onnx_bytes, providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
-    output_names = {output.name for output in session.get_outputs()}
-    if "label" not in output_names:
-        raise RuntimeError("Exported ONNX clusterer does not provide the expected 'label' output.")
-
     sklearn_labels = model.predict(samples)
-    onnx_labels = session.run(["label"], {input_name: samples})[0].reshape(-1)
-    if not np.array_equal(sklearn_labels, onnx_labels):
-        mismatches = int(np.count_nonzero(sklearn_labels != onnx_labels))
-        raise RuntimeError(f"ONNX clusterer parity validation failed for {mismatches}/{len(samples)} samples.")
+    onnx_labels = session.run(["label"], {input_name: samples})[0]
+    if onnx_labels.shape != sklearn_labels.shape or onnx_labels.dtype != np.int64:
+        raise RuntimeError("ONNX clusterer must return one int64 cluster label per input row.")
+    if np.any((onnx_labels < 0) | (onnx_labels >= model.n_clusters)):
+        raise RuntimeError("ONNX clusterer produced an out-of-range cluster label.")
+
+    mismatch_mask = sklearn_labels != onnx_labels
+    mismatch_samples = samples[mismatch_mask].astype(np.float64)
+    mismatches = len(mismatch_samples)
+    centers = model.cluster_centers_
+    sklearn_distances = np.linalg.norm(mismatch_samples - centers[sklearn_labels[mismatch_mask]], axis=1)
+    onnx_distances = np.linalg.norm(mismatch_samples - centers[onnx_labels[mismatch_mask]], axis=1)
+    distance_deltas = np.abs(onnx_distances - sklearn_distances)
+    relative_deltas = distance_deltas / np.maximum(sklearn_distances, ONNX_ASSIGNMENT_DISTANCE_ATOL)
+    maximum_absolute_distance_delta = float(distance_deltas.max(initial=0.0))
+    maximum_relative_distance_delta = float(relative_deltas.max(initial=0.0))
+
+    equivalent = np.isclose(onnx_distances, sklearn_distances, rtol=ONNX_ASSIGNMENT_DISTANCE_RTOL, atol=ONNX_ASSIGNMENT_DISTANCE_ATOL)
+    # Float32 predict can pick a farther centroid when the squared-distance gap rounds away.
+    squared_improvement = sklearn_distances**2 - onnx_distances**2
+    roundoff = (squared_improvement > 0) & (squared_improvement <= ONNX_ASSIGNMENT_SQUARED_ROUNDOFF_ATOL)
+    non_equivalent = np.count_nonzero(~(equivalent | roundoff))
+    if non_equivalent:
+        raise RuntimeError(
+            "ONNX clusterer assignment validation failed: "
+            f"{mismatches}/{len(samples)} label mismatches, including {non_equivalent} non-equivalent nearest-centroid assignments; "
+            f"maximum absolute distance delta={maximum_absolute_distance_delta:.3e}, maximum relative distance delta={maximum_relative_distance_delta:.3e}."
+        )
+
+    distance_equivalent_mismatches = int(np.count_nonzero(equivalent))
+
     return {
-        "onnx_sklearn_prediction_parity": True,
+        "validation_passed": True,
+        "onnx_sklearn_prediction_parity": mismatches == 0,
+        "onnx_sklearn_assignment_distance_equivalence": distance_equivalent_mismatches == mismatches,
+        "label_mismatches": mismatches,
+        "distance_equivalent_mismatches": distance_equivalent_mismatches,
+        "float32_roundoff_mismatches": mismatches - distance_equivalent_mismatches,
+        "maximum_absolute_assignment_distance_delta": maximum_absolute_distance_delta,
+        "maximum_relative_assignment_distance_delta": maximum_relative_distance_delta,
+        "assignment_distance_absolute_tolerance": ONNX_ASSIGNMENT_DISTANCE_ATOL,
+        "assignment_distance_relative_tolerance": ONNX_ASSIGNMENT_DISTANCE_RTOL,
+        "assignment_squared_distance_roundoff_tolerance": ONNX_ASSIGNMENT_SQUARED_ROUNDOFF_ATOL,
         "samples": len(samples),
+        "sample_source": "evaluation_reservoir",
         "input_name": input_name,
         "output_name": "label",
     }
 
 
-def _atomic_joblib_dump(payload: dict[str, Any], path: Path) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    try:
-        joblib.dump(payload, temporary)
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+def _select_validation_samples(samples: np.ndarray, *, embedding_dimension: int) -> np.ndarray:
+    """Select deterministic representative rows for ONNX assignment validation."""
+    matrix = np.asarray(samples, dtype=np.float32)
+    if matrix.ndim != 2 or len(matrix) == 0:
+        raise ValueError("ONNX validation samples must be a non-empty two-dimensional array.")
+    if matrix.shape[1] != embedding_dimension:
+        raise ValueError(f"ONNX validation samples have dimension {matrix.shape[1]}; expected {embedding_dimension}.")
+    if not np.isfinite(matrix).all():
+        raise ValueError("ONNX validation samples contain non-finite values.")
+
+    sample_count = min(ONNX_PARITY_SAMPLE_SIZE, len(matrix))
+    indexes = np.linspace(0, len(matrix) - 1, num=sample_count, dtype=np.int64)
+    return np.ascontiguousarray(matrix[indexes])
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    try:
-        temporary.write_bytes(data)
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _file_record(path: Path) -> dict[str, str | int]:
-    digest = hashlib.sha256()
+def _sha256(path: Path) -> str:
     with path.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return {
-        "bytes": path.stat().st_size,
-        "sha256": digest.hexdigest(),
-    }
+        return hashlib.file_digest(file, "sha256").hexdigest()
 
 
 def _timestamp() -> str:

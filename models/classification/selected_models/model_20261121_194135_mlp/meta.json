@@ -1,0 +1,16 @@
+{
+  "saved_at": "2026-11-21T19:41:35.761457+00:00",
+  "source": "./tb_logs/repo_classifier/version_257/checkpoints/epoch05-val_acc0.9773.ckpt",
+  "source_type": "best",
+  "monitor": "val_acc",
+  "monitor_mode": "max",
+  "model": {
+    "name": "mlp",
+    "hidden_dims": [
+      1024,
+      512
+    ],
+    "dropout": 0.2
+  },
+  "encoder": "ClusterDistributionEncoder"
+}

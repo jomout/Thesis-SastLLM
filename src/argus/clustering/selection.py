@@ -25,12 +25,18 @@ class CandidateKResult:
     k: int
     quality: ClusterQualityReport
 
-    def summary(self) -> dict:
+    def summary(self) -> dict[str, object]:
         sizes = self.quality.cluster_sizes
         return {
             "k": self.k,
+            "scope": self.quality.scope,
+            "evaluated_samples": self.quality.evaluated_samples,
+            "population_size": self.quality.population_size,
+            "inertia": self.quality.inertia,
             "normalized_inertia": self.quality.normalized_inertia,
             "cohesion_rms_distance": self.quality.cohesion_rms_distance,
+            "between_cluster_dispersion": self.quality.between_cluster_dispersion,
+            "normalized_between_cluster_dispersion": self.quality.normalized_between_cluster_dispersion,
             "separation_rms_distance": self.quality.separation_rms_distance,
             "calinski_harabasz_score": self.quality.calinski_harabasz_score,
             "silhouette_score": self.quality.silhouette_score,
@@ -41,6 +47,13 @@ class CandidateKResult:
             "represented_clusters": sizes.represented_clusters,
             "empty_clusters": sizes.empty_clusters,
             "singleton_clusters": sizes.singleton_clusters,
+            "below_minimum_clusters": sizes.below_minimum_clusters,
+            "minimum_cluster_size": sizes.minimum,
+            "cluster_size_percentile_05": sizes.percentile_05,
+            "median_cluster_size": sizes.median,
+            "mean_cluster_size": sizes.mean,
+            "cluster_size_percentile_95": sizes.percentile_95,
+            "maximum_cluster_size": sizes.maximum,
         }
 
 
@@ -138,6 +151,8 @@ class ClusterCountSelector:
             logger.info(
                 "Evaluated candidate K",
                 k=int(k),
+                inertia=quality.inertia,
+                normalized_inertia=quality.normalized_inertia,
                 cohesion=quality.cohesion_rms_distance,
                 separation=quality.separation_rms_distance,
                 silhouette=quality.silhouette_score,
@@ -244,15 +259,27 @@ def locate_elbow(candidates: tuple[CandidateKResult, ...]) -> int | None:
     return int(knee)
 
 
-def save_selection_report(result: KSelectionResult, *, output_dir: str | Path, name: str) -> tuple[Path, Path, Path]:
+def save_selection_report(result: KSelectionResult, *, output_dir: str | Path, name: str) -> tuple[Path, Path, Path, Path]:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     json_path = directory / f"{name}_quality.json"
+    candidates_json_path = directory / f"{name}_candidates.json"
     csv_path = directory / f"{name}_candidates.csv"
     plot_path = directory / f"{name}_quality.png"
     json_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
 
     rows = [candidate.summary() for candidate in result.candidates]
+    candidates_json_path.write_text(
+        json.dumps(
+            {
+                "selected_k": result.selected_k,
+                "selection_reason": result.selection_reason,
+                "candidates": rows,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     with csv_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=list(rows[0]))
         writer.writeheader()
@@ -261,10 +288,11 @@ def save_selection_report(result: KSelectionResult, *, output_dir: str | Path, n
     logger.info(
         "Saved clustering selection reports",
         json_file=str(json_path),
+        candidates_json_file=str(candidates_json_path),
         csv_file=str(csv_path),
         plot_file=str(plot_path),
     )
-    return json_path, csv_path, plot_path
+    return json_path, candidates_json_path, csv_path, plot_path
 
 
 def save_quality_report(report: ClusterQualityReport, path: str | Path) -> Path:

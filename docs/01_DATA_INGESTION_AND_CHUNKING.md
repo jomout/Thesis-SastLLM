@@ -6,6 +6,7 @@ This stage converts a local repository dataset into database records: repositori
 
 ```bash
 argus load
+argus load --dataset-path /path/to/an/incremental_dataset
 ```
 
 Implementation path:
@@ -42,6 +43,18 @@ The loader expects a label/repository folder shape:
 
 The first path component below the dataset root becomes the repository label. The second path component becomes the repository name. If a file is directly under the dataset root, the loader falls back to using the root folder name for both.
 
+## Balanced benign CodeSearchNet export
+
+`argus download_benign_dataset` can populate the `benign/` directory before ingestion. It loads CodeSearchNet's six language configurations explicitly and selects an equal number of unique Go, Java, JavaScript, PHP, Python, and Ruby repositories. Repository selection is deterministic and seeded; the default is 100 repositories per language with seed 42.
+
+Repositories appearing in more than one language configuration are excluded, and owner/repository names are flattened to collision-checked `owner__repository` directory names. The downloader refuses to append to a selected directory that already exists so rerunning it cannot silently duplicate source functions.
+
+```bash
+argus download_benign_dataset --split train --repositories-per-language 100
+```
+
+See [USAGE.md](./USAGE.md#dataset-download) for all downloader options.
+
 ## File discovery
 
 `CodeProcessor` loads supported suffixes from `configs/languages.yaml`. Each suffix maps to an internal Tree-sitter language name. Examples:
@@ -72,6 +85,11 @@ For every supported file, the loader:
 - strips non-ASCII characters inside string literals
 - normalizes line endings to `\n`
 - appends a final newline if missing
+
+If parsing and chunking succeed but produce no usable snippets, the file row is
+still retained and is created with `processed=true`. This allows the existing
+file-to-repository trigger to treat empty or comment-only files as completed
+instead of leaving their repositories permanently unprocessed.
 
 This cleanup is mainly there to keep PostgreSQL inserts stable and reduce noisy text in later LLM prompts.
 

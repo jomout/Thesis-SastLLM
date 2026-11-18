@@ -97,7 +97,7 @@ def get_model(
 
 def get_classification_config(
     mode: Literal["train", "test"],
-    config_path: str | Path = "configs/classification.yaml",
+    config_path: str | Path,
 ) -> tuple[str | Path, dict]:
     MODES = {"train", "test"}
 

@@ -17,7 +17,7 @@ app:
 log:
   level: INFO
   file: logs/argus.log
-  file_level: DEBUG
+  file_level: INFO
   max_bytes: 10485760
   backup_count: 5
 
@@ -30,7 +30,7 @@ Used by:
 - logging setup
 - `argus load`
 
-`level` controls the structured console threshold. `file_level` controls the rotating JSON-lines file independently. `max_bytes` and `backup_count` bound retained log volume. Use `INFO` on the console and `DEBUG` in the file for normal experiments; temporarily set the console to `DEBUG` when investigating batch, parser, encoder-shape, or storage behavior.
+`level` controls the structured console threshold. `file_level` controls the rotating JSON-lines file independently. `max_bytes` and `backup_count` bound retained log volume. Both thresholds default to `INFO`. Temporarily set the relevant threshold to `DEBUG` when investigating batch, parser, encoder-shape, or storage behavior.
 
 ## `llms.yaml`
 
@@ -111,21 +111,22 @@ clustering:
     save_model_dir: "models/clustering/trained_models"
 
   test:
-    k: 10661
     load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
 ```
 
 Used by:
 
-- `argus cluster --mode search`
-- `argus cluster --mode train`
-- `argus cluster --mode test`
+- `argus cluster --mode search --config-path configs/clustering.yaml`
+- `argus cluster --mode train --config-path configs/clustering.yaml`
+- `argus cluster --mode test --config-path configs/clustering.yaml`
 
 Note: `search.random_state` is passed into the current `MiniBatchKMeansClusterer` implementation. `test.load_model_dir` must contain `model.joblib`, `model.onnx`, and their checksummed `manifest.json`; test mode restores `model.joblib` after bundle verification.
 
 The `evaluation` section controls the fixed candidate-comparison reservoir, cluster-stratified silhouette, elbow neighborhood, and silhouette reliability threshold. `sample_size` should exceed the expected K so the reservoir can also initialize MiniBatchKMeans independently of source order. `silhouette_samples_per_cluster` sets the target minimum representation for each selected silhouette cluster. Search and train create timestamped run directories under their respective `save_model_dir`; every report and plot is stored beside its model.
 
-## `classification.yaml`
+## Classification YAML
+
+`argus classify` requires `--config-path` for every mode. The supplied profiles are `configs/classification.mlp.yaml` and `configs/classification.transformer.yaml`. The high-level wrappers require `--config-path` for classification and `--clustering-config-path` for clustering.
 
 Current content:
 
@@ -181,9 +182,9 @@ classification:
 
 Used by:
 
-- `argus classify --mode search`
-- `argus classify --mode train`
-- `argus classify --mode test`
+- `argus classify --mode search --config-path configs/classification.mlp.yaml`
+- `argus classify --mode train --config-path configs/classification.mlp.yaml`
+- `argus classify --mode test --config-path configs/classification.mlp.yaml`
 
 Important naming note: `l1_param` is accepted as an alias for the runtime field `l1_lambda`.
 
@@ -192,6 +193,26 @@ Classification does not accept `clusterer_manifest`. It consumes cluster ids alr
 Model architecture fields live in strict reusable profiles under `models`. Each classification mode selects one profile by name. Optimization and data-loading fields remain under the mode's `params` mapping.
 
 For `models.transformer.input_encoding`, use `"ordered_tokens"` to preserve functionality order or `"cluster_distribution"` to attend over aggregate cluster frequencies. In distribution mode, `max_sequence_length` limits the most frequent nonzero clusters included per repository and `pooling` must be `"mean"` or `"max"`.
+
+## `llms.yaml` Batch API fields
+
+The top-level `batch_functionality` object configures `argus generate_functionalities_batch_api` independently of the online `models.snippet_processor` provider:
+
+| Field                    | Contract                                                |
+| ------------------------ | ------------------------------------------------------- |
+| `model`                  | OpenAI model id; defaults to `gpt-5.6-luna`             |
+| `reasoning_effort`       | `none`, `low`, `medium`, `high`, `xhigh`, or `max`      |
+| `max_output_tokens`      | Responses output ceiling, at least 16                   |
+| `snippet_batch_size`     | snippets included in one API request                    |
+| `requests_per_file`      | requests per JSONL file, at most 50,000                 |
+| `max_file_size_bytes`    | local guard, at most the API's 200 MB limit             |
+| `batch_files_dir`        | generated request JSONL directory                       |
+| `results_dir`            | downloaded output/error JSONL directory                 |
+| `max_concurrent_batches` | simultaneous Batch API file lifecycles, from 1 to 10    |
+| `poll_interval_seconds`  | seconds between status checks                           |
+| `max_wait_hours`         | local polling deadline, at least the 24-hour API window |
+
+Unknown or invalid fields fail before files are generated or submitted.
 
 ## `languages.yaml`
 

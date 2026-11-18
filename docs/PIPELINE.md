@@ -24,13 +24,13 @@ Code repositories
 
 ## Stage map
 
-| Stage                          | Main command                     | Main output                                          | Detailed reference                                                       |
-| ------------------------------ | -------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1. Data ingestion and chunking | `argus load`                     | `repositories`, `files`, `snippets`                  | [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.md) |
-| 2. Functionality generation    | `argus generate_functionalities` | `functionalities.description`, `functionalities.tag` | [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md)       |
-| 3. Embedding and splitting     | `argus split`                    | `repositories.split`, Qdrant `split` payloads        | [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md)         |
-| 4. Functionality clustering    | `argus cluster --mode ...`       | `functionalities.cluster_id`, clustering model       | [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)       |
-| 5. Repository classification   | `argus classify --mode ...`      | model artifacts, predictions, metrics                | [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)     |
+| Stage                          | Main command                     | Main output                                             | Detailed reference                                                       |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1. Data ingestion and chunking | `argus load`                     | `repositories`, `files`, `snippets`                     | [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.md) |
+| 2. Functionality generation    | `argus generate_functionalities` | `functionalities.description`, `functionalities.tag`    | [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md)       |
+| 3. Embedding and splitting     | `argus embed`, `argus split`     | Qdrant vectors and split payloads, `repositories.split` | [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md)         |
+| 4. Functionality clustering    | `argus cluster --mode ... --config-path configs/clustering.yaml`       | `functionalities.cluster_id`, clustering model          | [04_FUNCTIONALITY_CLUSTERING.md](./04_FUNCTIONALITY_CLUSTERING.md)       |
+| 5. Repository classification   | `argus classify --mode ... --config-path ...` | model artifacts, predictions, metrics                   | [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md)     |
 
 For debugging and validation, `argus-inspect-distribution` and `argus-inspect-timeseries` inspect one repository and print how its clustered functionalities are encoded before model training.
 
@@ -64,19 +64,19 @@ A full experiment from raw local dataset usually follows:
 ```bash
 argus load
 argus generate_functionalities
-# ensure functionality embeddings exist in Qdrant
+argus embed
 argus split
-argus cluster --mode train
-argus classify --mode train
-argus cluster --mode test
-argus classify --mode test
+argus cluster --mode train --config-path configs/clustering.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
+argus cluster --mode test --config-path configs/clustering.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 The compact wrappers run only the final model stages:
 
 ```bash
-argus train
-argus test
+argus train --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
+argus test --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 Current wrapper behavior:
@@ -90,7 +90,7 @@ They do not run dataset loading, LLM generation, splitting, or embedding creatio
 
 ## Current implementation caveats
 
-- `argus split` currently calls `split_repositories()` only. The available `embed_all_repositories()` helper is present but commented out in `src/scripts/pipelines.py`.
+- `argus embed` creates missing functionality vectors; `argus split` only assigns PostgreSQL and Qdrant split metadata.
 - Classification filters repositories with `processed=true`, so trigger propagation from snippets to files to repositories matters.
 - Classification treats every label other than exact `benign` as `malicious`.
 - The classification config accepts `l1_param` as an alias for the runtime `l1_lambda` field.

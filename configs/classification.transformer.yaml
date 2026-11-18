@@ -1,0 +1,55 @@
+models:
+  transformer:
+    input_encoding: "cluster_distribution"
+    embedding_dim: 128
+    num_layers: 2
+    num_heads: 4
+    feedforward_dim: 256
+    dropout: 0.2
+    pooling: "mean"
+    max_sequence_length: 256
+    truncation: "first"
+
+classification:
+  search:
+    model: transformer
+    save_model_dir: "models/classification/searching_models/transformer"
+    save_plots_dir: "plots/classification/searching/transformer"
+    params:
+      k: 4093
+      seed: 42
+      use_weighted_sampler: false
+      use_class_weights: true
+    grid_search:
+      lr: [0.0001, 0.0005, 0.001]
+      weight_decay: [0.0001, 0.0005, 0.001]
+      l1_param: [0.0001, 0.0005, 0.001]
+      batch_size: [16, 32, 64]
+      epochs: [50]
+
+  train:
+    model: transformer
+    save_model_dir: "models/classification/trained_models/transformer"
+    params:
+      k: 4093
+      lr: 0.0001
+      weight_decay: 0.0001
+      l1_param: 0.001
+      epochs: 50
+      batch_size: 16
+      use_weighted_sampler: false
+      use_class_weights: true
+      seed: 42
+
+  test:
+    model: transformer
+    load_model_dir: "models/classification/selected_models/model_20261119_180651_transformer"
+    params:
+      k: 4093
+      lr: 0.0001
+      weight_decay: 0.0001
+      l1_param: 0.001
+      batch_size: 16
+      use_weighted_sampler: false
+      use_class_weights: true
+      seed: 42

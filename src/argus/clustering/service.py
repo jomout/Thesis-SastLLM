@@ -8,7 +8,7 @@ from argus.db import FunctionalityManager
 from argus.dtos.update_dtos import UpdateFunctionalityDto
 from argus.utils.observability import log_duration
 
-from .artifacts import CLUSTERER_JOBLIB_FILENAME, search_artifacts, training_artifacts
+from .artifacts import CLUSTERER_QUALITY_REPORT_FILENAME, search_artifact_dir, training_artifact_dir
 from .config import ClusteringConfig, ClusteringMode
 from .evaluation import ClusterQualityEvaluator
 from .kmeans import ClusterAssignmentBatch, MiniBatchKMeansClusterer
@@ -30,13 +30,17 @@ class FunctionalityClusteringService:
         collection_name: str,
         embedding_model_name: str | None = None,
         config: ClusteringConfig | None = None,
-        config_path: str | Path = "configs/clustering.yaml",
+        config_path: str | Path | None = None,
         embedding_repository: QdrantEmbeddingRepository | None = None,
         functionality_manager: FunctionalityManager | None = None,
     ) -> None:
+        if config is None:
+            if config_path is None:
+                raise ValueError("Provide a clustering config or an explicit config_path.")
+            config = ClusteringConfig.from_yaml(config_path)
         self.collection_name = collection_name
         self.embedding_model_name = embedding_model_name
-        self.config = config or ClusteringConfig.from_yaml(config_path)
+        self.config = config
         self.embedding_repository = embedding_repository or QdrantEmbeddingRepository(collection_name=collection_name)
         self.functionality_manager = functionality_manager or FunctionalityManager()
         logger.info("Initialized functionality clustering service", collection_name=collection_name)
@@ -100,15 +104,15 @@ class FunctionalityClusteringService:
                     min_samples_per_cluster=cfg.min_samples_per_cluster,
                     num_candidates=cfg.num_k_candidates,
                 )
-                artifacts = search_artifacts(
+                model_dir = search_artifact_dir(
                     cfg.save_model_dir,
                     n=n,
                     k=selection.selected_k,
                 )
                 report_paths = save_selection_report(
                     selection,
-                    output_dir=artifacts.directory,
-                    name=f"{artifacts.stem}_selection",
+                    output_dir=model_dir,
+                    name=f"{model_dir.name}_selection",
                 )
                 logger.info(
                     "Selected clustering K",
@@ -138,16 +142,13 @@ class FunctionalityClusteringService:
                     silhouette_sample=evaluation_sample,
                     min_cluster_size=cfg.min_samples_per_cluster,
                 )
-                clusterer.save_model(artifacts.directory, metadata=self._artifact_metadata())
-                quality_path = save_quality_report(final_quality, artifacts.quality_report)
-                logger.info(
-                    "Saved clustering search artifacts",
-                    artifact_dir=str(artifacts.directory),
-                    joblib_model=str(artifacts.joblib_model),
-                    onnx_model=str(artifacts.onnx_model),
-                    manifest=str(artifacts.manifest),
-                    quality_report=str(quality_path),
-                )
+                save_quality_report(final_quality, model_dir / CLUSTERER_QUALITY_REPORT_FILENAME)
+                with log_duration(logger, "cluster_search_export", split="train", n=n, k=selection.selected_k):
+                    clusterer.save_model(
+                        model_dir,
+                        validation_samples=evaluation_sample.vectors,
+                        metadata=self._artifact_metadata(),
+                    )
 
     def train(self) -> None:
         cfg = self.config.train
@@ -166,7 +167,7 @@ class FunctionalityClusteringService:
             )
 
         clusterer = MiniBatchKMeansClusterer(random_state=cfg.random_state)
-        artifacts = training_artifacts(cfg.save_model_dir, k=cfg.k)
+        model_dir = training_artifact_dir(cfg.save_model_dir, k=cfg.k)
         with log_duration(logger, "cluster_train_fit", split="train", embeddings=train_count, k=cfg.k):
             clusterer.fit(
                 source,
@@ -174,7 +175,6 @@ class FunctionalityClusteringService:
                 batch_size=cfg.batch_size,
                 initialization_vectors=evaluation_sample.vectors,
             )
-            clusterer.save_model(artifacts.directory, metadata=self._artifact_metadata())
 
         if clusterer.kmeans is None:
             raise RuntimeError("Trained clusterer did not produce a fitted model.")
@@ -186,20 +186,24 @@ class FunctionalityClusteringService:
                 silhouette_sample=evaluation_sample,
                 min_cluster_size=self.config.search.min_samples_per_cluster,
             )
-            quality_path = save_quality_report(quality, artifacts.quality_report)
-            logger.info(
-                "Validated trained clustering model",
-                artifact_dir=str(artifacts.directory),
-                joblib_model=str(artifacts.joblib_model),
-                onnx_model=str(artifacts.onnx_model),
-                manifest=str(artifacts.manifest),
-                quality_report=str(quality_path),
-                normalized_inertia=quality.normalized_inertia,
-                silhouette=quality.silhouette_score,
-                calinski_harabasz=quality.calinski_harabasz_score,
-                empty_clusters=quality.cluster_sizes.empty_clusters,
-                below_minimum_clusters=quality.cluster_sizes.below_minimum_clusters,
+            quality_path = save_quality_report(quality, model_dir / CLUSTERER_QUALITY_REPORT_FILENAME)
+
+        with log_duration(logger, "cluster_train_export", split="train", embeddings=train_count, k=cfg.k):
+            clusterer.save_model(
+                model_dir,
+                validation_samples=evaluation_sample.vectors,
+                metadata=self._artifact_metadata(),
             )
+        logger.info(
+            "Validated trained clustering model",
+            artifact_dir=str(model_dir),
+            quality_report=str(quality_path),
+            normalized_inertia=quality.normalized_inertia,
+            silhouette=quality.silhouette_score,
+            calinski_harabasz=quality.calinski_harabasz_score,
+            empty_clusters=quality.cluster_sizes.empty_clusters,
+            below_minimum_clusters=quality.cluster_sizes.below_minimum_clusters,
+        )
 
         with log_duration(logger, "cluster_train_assignments", split="train"):
             self._store_assignments(clusterer.predict_batches(source, batch_size=cfg.batch_size))
@@ -214,7 +218,6 @@ class FunctionalityClusteringService:
             split="test",
             embeddings=test_count,
             model_dir=str(cfg.load_model_dir),
-            joblib_model=str(cfg.load_model_dir / CLUSTERER_JOBLIB_FILENAME),
         )
 
         clusterer = MiniBatchKMeansClusterer()

@@ -48,14 +48,20 @@ class BatchFilesGenerator:
     def __init__(
         self,
         *,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-5.6-luna",
+        reasoning_effort: str = "none",
+        max_output_tokens: int = 8192,
         snippet_batch_size: int = 20,
         api_batch_size: int = 500,
+        max_file_size_bytes: int = 190_000_000,
     ) -> None:
         logger.debug("Initializing BatchSnippetProcessor.")
 
         self.api_batch_size = api_batch_size
         self.snippet_batch_size = snippet_batch_size
+        self.max_file_size_bytes = max_file_size_bytes
+        self.reasoning_effort = reasoning_effort
+        self.max_output_tokens = max_output_tokens
 
         self.tree_sitter_gen = TreeSitterGenerator(yaml_config="configs/languages.yaml")
 
@@ -77,13 +83,16 @@ class BatchFilesGenerator:
 
         return snippets_prompt
 
-    def create_api_batches(self, output_dir: str | Path) -> None:
+    def create_api_batches(self, output_dir: str | Path) -> list[Path]:
         """
         Create multiple JSONL batch files, each containing up to `api_batch_size`
         prompts generated from `snippet_batch_size` code snippets per prompt.
         """
         output_directory = Path(output_dir)
         output_directory.mkdir(parents=True, exist_ok=True)
+        existing_batch_files = sorted(output_directory.glob("*.jsonl"))
+        if existing_batch_files:
+            raise FileExistsError(f"Refusing to mix new requests with {len(existing_batch_files)} existing JSONL files in {output_directory}. Move or remove the previous batch files first.")
 
         snippet_batches_iter, total_batches = self._fetch_snippets_into_batches()
         total_api_batches = math.ceil(total_batches / self.api_batch_size)
@@ -91,7 +100,8 @@ class BatchFilesGenerator:
         print(f"Total snippet batches: {total_batches}")
         print(f"Creating {total_api_batches} API batch files ({self.api_batch_size} prompts per .jsonl file).")
         current_api_batch_index = 1
-        current_snippet_prompts = []
+        current_snippet_prompts: list[str] = []
+        created_files: list[Path] = []
         prompt_count = 0
 
         for i, snippet_batch in enumerate(tqdm(snippet_batches_iter, total=total_batches), start=1):
@@ -103,9 +113,16 @@ class BatchFilesGenerator:
             # Once we reach api_batch_size, write a new jsonl file
             if prompt_count >= self.api_batch_size:
                 file_name = output_directory / f"api_batch_{current_api_batch_index}.jsonl"
-                self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
-                with open(f"snippet_prompts_debug_{current_api_batch_index}.txt", "a", encoding="utf-8") as debug_f:
-                    debug_f.writelines(sp + "\n\n---\n\n" for sp in current_snippet_prompts)
+                self.build_api_batch_jsonl(
+                    current_snippet_prompts,
+                    output_path=file_name,
+                    model=self.model,
+                    reasoning_effort=self.reasoning_effort,
+                    max_output_tokens=self.max_output_tokens,
+                    max_file_size_bytes=self.max_file_size_bytes,
+                    custom_id_prefix=f"functionality-{current_api_batch_index:05d}",
+                )
+                created_files.append(file_name)
                 print(f"Wrote {file_name} with {prompt_count} prompts.")
 
                 # Reset for next file
@@ -116,8 +133,18 @@ class BatchFilesGenerator:
         # Handle remaining snippets (if not a multiple of api_batch_size)
         if current_snippet_prompts:
             file_name = output_directory / f"api_batch_{current_api_batch_index}.jsonl"
-            self.build_api_batch_jsonl(current_snippet_prompts, output_path=file_name, model=self.model)
+            self.build_api_batch_jsonl(
+                current_snippet_prompts,
+                output_path=file_name,
+                model=self.model,
+                reasoning_effort=self.reasoning_effort,
+                max_output_tokens=self.max_output_tokens,
+                max_file_size_bytes=self.max_file_size_bytes,
+                custom_id_prefix=f"functionality-{current_api_batch_index:05d}",
+            )
+            created_files.append(file_name)
             print(f"Wrote final {file_name} with {prompt_count} prompts.")
+        return created_files
 
     def _fetch_snippets_into_batches(self) -> tuple[Iterator[list[SnippetWithFileAndRepository]], int]:
         """
@@ -156,8 +183,12 @@ class BatchFilesGenerator:
     def build_api_batch_jsonl(
         snippets_prompts: list[str],
         output_path: str | Path,
-        model: str = "gpt-5-mini",
-    ):
+        model: str = "gpt-5.6-luna",
+        reasoning_effort: str = "none",
+        max_output_tokens: int = 8192,
+        max_file_size_bytes: int = 190_000_000,
+        custom_id_prefix: str = "functionality-00001",
+    ) -> str:
         """
         Build a JSONL file for the OpenAI Batch API using /v1/responses
         with plain text output for code functionality summarization.
@@ -169,15 +200,23 @@ class BatchFilesGenerator:
         with output_file.open("w", encoding="utf-8") as f:
             for i, snippets_prompt in enumerate(snippets_prompts, start=1):
                 record = {
-                    "custom_id": f"snippets_batch_{i}",
+                    "custom_id": f"{custom_id_prefix}-{i:05d}",
                     "method": "POST",
                     "url": "/v1/responses",
                     "body": {
                         "model": model,
                         "input": snippets_prompt,
-                        "prompt_cache_key": "functionality_analysis_v1",
+                        "reasoning": {"effort": reasoning_effort},
+                        "max_output_tokens": max_output_tokens,
+                        "store": False,
                     },
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        file_size_bytes = output_file.stat().st_size
+        if file_size_bytes > max_file_size_bytes:
+            raise ValueError(
+                f"Generated Batch API file {output_file} is {file_size_bytes} bytes, exceeding the configured {max_file_size_bytes}-byte limit. Reduce requests_per_file or snippet_batch_size."
+            )
 
         return str(output_file)

@@ -4,12 +4,12 @@ SAST-LLM uses PostgreSQL for relational pipeline state and Qdrant for functional
 
 ## Services
 
-`docker-compose.yml` defines:
+`docker-compose.argus.yml` defines:
 
-| Service           | Image                 | Ports                   | Purpose                   |
-| ----------------- | --------------------- | ----------------------- | ------------------------- |
-| `code_database`   | `postgres:18-alpine`  | `${POSTGRES_PORT}:5432` | relational pipeline state |
-| `code_embeddings` | `qdrant/qdrant:v1.17` | `6333`, `6334`          | vector embeddings         |
+| Service            | Image                 | Ports                   | Purpose                   |
+| ------------------ | --------------------- | ----------------------- | ------------------------- |
+| `argus_database`   | `postgres:18-alpine`  | `${POSTGRES_PORT}:5432` | relational pipeline state |
+| `argus_embeddings` | `qdrant/qdrant:v1.19` | `6333`, `6334`          | vector embeddings         |
 
 PostgreSQL environment variables:
 
@@ -29,6 +29,14 @@ POSTGRES_DB
 POSTGRES_HOST
 POSTGRES_PORT
 ```
+
+PostgreSQL schema changes are managed by Alembic in `database/migrations/`. After starting the service, run:
+
+```bash
+uv run alembic upgrade head
+```
+
+The SQL initialization files remain available for legacy/reference use but are not mounted into PostgreSQL by Docker Compose. Existing databases created from those files require the adoption procedure in [SETUP.md](./SETUP.md#database-migrations).
 
 ## PostgreSQL ORM models
 

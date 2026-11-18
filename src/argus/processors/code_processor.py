@@ -207,8 +207,18 @@ class CodeProcessor:
                 language=language,
                 filename=filename,
                 filepath=rel_path,
+                processed=not chunks,
             )
             file_id = self.file_db.add_file(file)
+
+            if not chunks:
+                logger.warning(
+                    "File produced no snippets; stored as processed",
+                    file_id=file_id,
+                    filepath=rel_path,
+                    repository_id=repository_id,
+                )
+                continue
 
             # Add all snippets to database in bulk (fallback to per-snippet on failure)
             try:

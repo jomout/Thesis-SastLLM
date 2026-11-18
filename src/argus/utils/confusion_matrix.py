@@ -24,7 +24,7 @@ ImageFormat = Literal["png", "pdf", "svg"]
 class ConfusionMatrixConfig:
     """Validated runtime settings for classifier confusion-matrix plots."""
 
-    classification_config_path: Path = Path("configs/classification.yaml")
+    classification_config_path: Path
     output_dir: Path = Path("plots/confusion_matrix")
     split: DatasetSplit = "test"
     log_scale: bool = True
@@ -37,9 +37,8 @@ class ConfusionMatrixConfig:
             raise ValueError("image_format must be one of: png, pdf, svg.")
 
 
-def run_confusion_matrix(settings: ConfusionMatrixConfig | None = None) -> Path:
+def run_confusion_matrix(settings: ConfusionMatrixConfig) -> Path:
     """Evaluate the configured classifier and write confusion-matrix artifacts."""
-    settings = settings or ConfusionMatrixConfig()
     classification_config = ClassificationConfig.from_yaml("test", settings.classification_config_path)
     if classification_config.load_model_dir is None:
         raise ValueError("classification.test.load_model_dir must be configured for confusion-matrix evaluation.")

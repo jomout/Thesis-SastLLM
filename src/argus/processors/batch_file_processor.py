@@ -9,6 +9,8 @@ from argus.configs import get_logger
 
 logger = get_logger(__name__)
 
+TERMINAL_BATCH_STATUSES = {"completed", "failed", "expired", "cancelled"}
+
 
 class BatchFileProcessor:
     """
@@ -46,6 +48,9 @@ class BatchFileProcessor:
         self.max_wait_hours = max_wait_hours
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        existing_results = sorted(self.output_dir.glob("*.jsonl"))
+        if existing_results:
+            raise FileExistsError(f"Refusing to mix new Batch API results with {len(existing_results)} existing JSONL files in {self.output_dir}. Move the previous results first.")
 
         logger.debug(f"BatchFileProcessor initialized: batch_dir={self.batch_files_dir}, output_dir={self.output_dir}, poll_interval={self.poll_interval}s")
 
@@ -72,25 +77,43 @@ class BatchFileProcessor:
         start_time = time.time()
         while True:
             batch = self.client.batches.retrieve(batch_id)
-            if batch.status in ["completed", "failed"]:
+            if batch.status in TERMINAL_BATCH_STATUSES:
                 logger.info(f"Batch {batch_id} finished with status: {batch.status}")
                 return batch
             elapsed = time.time() - start_time
             if elapsed > self.max_wait_hours * 3600:
-                logger.exception(f"Timeout: Batch {batch_id} exceeded {self.max_wait_hours}h wait.")
-                return batch
+                raise TimeoutError(f"Batch {batch_id} exceeded the configured {self.max_wait_hours}-hour wait.")
             logger.debug(f"Batch {batch_id} status={batch.status} ... waiting {self.poll_interval}s")
             time.sleep(self.poll_interval)
 
     def _download_file(self, file_id: str, output_path: Path):
         """Download and save a file by ID."""
+        if output_path.exists():
+            raise FileExistsError(f"Refusing to overwrite existing Batch API result file: {output_path}")
         logger.debug(f"Downloading file_id={file_id} → {output_path.name}")
         content = self.client.files.content(file_id).content
         with open(output_path, "wb") as f:
             f.write(content)
         logger.info(f"Saved {output_path.name}")
 
-    def process_all(self):
+    def _process_file(self, file_path: Path) -> None:
+        """Upload, submit, poll, and download one Batch API request file."""
+        file_id = self._upload_file(file_path)
+        batch_id = self._create_batch(file_id)
+        batch = self._poll_batch(batch_id)
+
+        if getattr(batch, "output_file_id", None):
+            output_path = self.output_dir / f"{file_path.stem}_output.jsonl"
+            self._download_file(batch.output_file_id, output_path)  # type: ignore
+
+        if getattr(batch, "error_file_id", None):
+            error_path = self.output_dir / f"{file_path.stem}_errors.jsonl"
+            self._download_file(batch.error_file_id, error_path)  # type: ignore
+
+        if batch.status != "completed":
+            raise RuntimeError(f"Batch {batch.id} ended with status {batch.status!r}.")
+
+    def process_all(self) -> None:
         """Submit all .jsonl batch files and await their completion."""
         jsonl_files = sorted(self.batch_files_dir.glob("*.jsonl"))
         if not jsonl_files:
@@ -99,29 +122,21 @@ class BatchFileProcessor:
 
         logger.info(f"Found {len(jsonl_files)} batch files to process.")
 
+        failures: list[str] = []
         for file_path in tqdm(jsonl_files, desc="Submitting batches"):
             try:
-                file_id = self._upload_file(file_path)
-                batch_id = self._create_batch(file_id)
-                batch = self._poll_batch(batch_id)
+                self._process_file(file_path)
+            except Exception as error:
+                failures.append(f"{file_path.name}: {error}")
+                logger.exception("Error processing Batch API file", file=file_path.name, error=str(error))
 
-                # Download output and error files if present
-                if getattr(batch, "output_file_id", None):
-                    output_path = self.output_dir / f"{file_path.stem}_output.jsonl"
-                    self._download_file(batch.output_file_id, output_path)  # type: ignore
+        if failures:
+            raise RuntimeError(f"{len(failures)} Batch API file(s) failed: {'; '.join(failures)}")
 
-                if getattr(batch, "error_file_id", None):
-                    error_path = self.output_dir / f"{file_path.stem}_errors.jsonl"
-                    self._download_file(batch.error_file_id, error_path)  # type: ignore
-
-            except Exception:
-                logger.exception(f"Error processing {file_path.name}")
-
-    def process_all_concurrently(self, max_concurrent: int = 3):
-        """
-        Process all .jsonl batch files concurrently.
-        Each file runs a full independent lifecycle (upload → create → poll → download).
-        """
+    def process_all_concurrently(self, max_concurrent: int = 3) -> None:
+        """Process request files concurrently and fail if any file is unsuccessful."""
+        if max_concurrent <= 0:
+            raise ValueError("max_concurrent must be greater than zero.")
 
         jsonl_files = sorted(self.batch_files_dir.glob("*.jsonl"))
         if not jsonl_files:
@@ -130,34 +145,17 @@ class BatchFileProcessor:
 
         logger.info(f"Found {len(jsonl_files)} batch files to process (running up to {max_concurrent} concurrently).")
 
-        def process_single(file_path: Path):
-            try:
-                logger.info(f"▶ Starting {file_path.name}")
-                file_id = self._upload_file(file_path)
-                batch_id = self._create_batch(file_id)
-                batch = self._poll_batch(batch_id)
-
-                # Download results
-                if getattr(batch, "output_file_id", None):
-                    output_path = self.output_dir / f"{file_path.stem}_output.jsonl"
-                    self._download_file(batch.output_file_id, output_path)  # type: ignore
-
-                if getattr(batch, "error_file_id", None):
-                    error_path = self.output_dir / f"{file_path.stem}_errors.jsonl"
-                    self._download_file(batch.error_file_id, error_path)  # type: ignore
-
-                logger.info(f"✅ Finished {file_path.name}")
-                return file_path.name, "completed"
-
-            except Exception as e:
-                logger.exception(
-                    "Error processing file",
-                    file=file_path.name,
-                )
-                return file_path.name, f"error: {e}"
-
+        failures: list[str] = []
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-            futures = [executor.submit(process_single, f) for f in jsonl_files]
-            for future in as_completed(futures):
-                name, result = future.result()
-                logger.info(f"{name} → {result}")
+            future_files = {executor.submit(self._process_file, file_path): file_path for file_path in jsonl_files}
+            for future in as_completed(future_files):
+                file_path = future_files[future]
+                try:
+                    future.result()
+                    logger.info("Completed Batch API file", file=file_path.name)
+                except Exception as error:
+                    failures.append(f"{file_path.name}: {error}")
+                    logger.exception("Error processing Batch API file", file=file_path.name, error=str(error))
+
+        if failures:
+            raise RuntimeError(f"{len(failures)} Batch API file(s) failed: {'; '.join(failures)}")

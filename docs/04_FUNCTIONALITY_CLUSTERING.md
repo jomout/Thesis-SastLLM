@@ -7,10 +7,12 @@ For the step-by-step experimental workflow and interpretation checklist, see [08
 ## CLI entrypoint
 
 ```bash
-argus cluster --mode search
-argus cluster --mode train
-argus cluster --mode test
+argus cluster --mode search --config-path configs/clustering.yaml
+argus cluster --mode train --config-path configs/clustering.yaml
+argus cluster --mode test --config-path configs/clustering.yaml
 ```
+
+All clustering modes require `--config-path`. For `argus train` and `argus test`, pass the clustering YAML with `--clustering-config-path`.
 
 Implementation paths:
 
@@ -71,7 +73,6 @@ clustering:
     save_model_dir: "models/clustering/trained_models"
 
   test:
-    k: 10661
     load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
 ```
 
@@ -85,12 +86,14 @@ Important behavior:
 - fitting streams vectors in batches of `1000`
 - candidate and train models are initialized from the seeded reservoir when it contains at least `k` rows, avoiding dependence on Qdrant stream order
 - the fitted scikit-learn model is saved as `model.joblib` for test-time restoration
-- the same model is exported as `model.onnx` and checked against scikit-learn predictions
-- `manifest.json` records the cluster count, embedding contract, dependency versions, ONNX parity result, and SHA-256 checksums for both model files
+- `model.onnx` ranks the same centroids in float64 and exposes float32 inputs and Euclidean distance scores. Validation checks deterministic rows from the seeded evaluation reservoir against scikit-learn's predictions.
+- When labels differ, validation computes both point-to-centroid distances directly in float64. It accepts distances within `1e-6` absolute and `1e-5` relative tolerance. It also accepts a closer ONNX centroid when its squared-distance advantage is at most four float32 machine epsilons (approximately `4.77e-7`) on the L2-normalized scale.
+- `manifest.json` records the cluster count, embedding contract, ONNX validation counts and tolerances for both cases, and SHA-256 checksums for both model files.
+- the full quality JSON is written before model export, so metrics remain available if serialization or ONNX validation fails
 - test mode verifies the complete artifact bundle before deserializing and using `model.joblib`; it does not use ONNX for clustering assignments
 - cluster centers are contained in the saved models and are not written as a separate `.npz`
 
-This is a breaking artifact-format change. Existing standalone joblib or ONNX files without the current `manifest.json` are not accepted; train or export the clusterer again with the current code and update `test.load_model_dir` to the generated model directory.
+Test mode requires a complete bundle with `manifest.json`. Earlier version 1 bundles, including the checked-in selected model, remain loadable when their manifests record exact ONNX prediction parity and both file checksums match.
 
 ## Search mode
 
@@ -147,8 +150,9 @@ models/clustering/searching_models/clusterers_<n>_<timestamp>/
     model.joblib
     model.onnx
     manifest.json
-    clusterer_<n>_<k>_<timestamp>_quality.json
+    quality.json
     clusterer_<n>_<k>_<timestamp>_selection_quality.json
+    clusterer_<n>_<k>_<timestamp>_selection_candidates.json
     clusterer_<n>_<k>_<timestamp>_selection_candidates.csv
     clusterer_<n>_<k>_<timestamp>_selection_quality.png
 ```
@@ -160,7 +164,7 @@ models/clustering/searching_models/clusterers_<n>_<timestamp>/
 1. Read embeddings with payload `split=train`.
 2. Build a seeded reservoir of at least `k` rows and use it to initialize `MiniBatchKMeans` without stream-order bias.
 3. Fit `MiniBatchKMeans(k=10661)` over the complete stream.
-4. Predict cluster ids for the same train embeddings.
+4. Run a full streaming quality evaluation and save `quality.json` beside the model.
 5. Save the trained model:
 
     ```text
@@ -168,10 +172,10 @@ models/clustering/searching_models/clusterers_<n>_<timestamp>/
       model.joblib
       model.onnx
       manifest.json
+      quality.json
     ```
 
-6. Run a full streaming quality evaluation and save `clusterer_<k>_<timestamp>_quality.json` beside the model.
-7. Bulk-update `functionalities.cluster_id` in PostgreSQL.
+6. Predict cluster ids for the same train embeddings and bulk-update `functionalities.cluster_id` in PostgreSQL.
 
 The update maps:
 
@@ -197,9 +201,10 @@ No new model is trained in test mode.
 | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `functionalities.cluster_id`                                                                   | integer cluster id assigned to each functionality                           |
 | `models/clustering/.../model.joblib`                                                           | scikit-learn clusterer restored by test mode                                |
-| `models/clustering/.../model.onnx`                                                             | portable, parity-checked inference model                                    |
+| `models/clustering/.../model.onnx`                                                             | portable, assignment-equivalence-validated inference model                  |
 | `models/clustering/.../manifest.json`                                                          | artifact contract, versions, validation result, and model-file checksums    |
-| `models/clustering/.../*_quality.json`                                                         | full selected/final quality reports and per-cluster statistics              |
+| `models/clustering/.../quality.json`                                                           | full selected/final quality reports and per-cluster statistics              |
+| `models/clustering/.../*_selection_candidates.json`                                            | flat per-candidate search metrics, including raw and normalized inertia     |
 | `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | search model, candidate metrics, selection rationale, CSV, and quality plot |
 | `models/clustering/trained_models/clusterer_<k>_<timestamp>/`                                  | trained model and full quality report                                       |
 

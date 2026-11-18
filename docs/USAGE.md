@@ -27,10 +27,24 @@ Reference: [01_DATA_INGESTION_AND_CHUNKING.md](./01_DATA_INGESTION_AND_CHUNKING.
 ### Dataset download
 
 ```bash
-argus download_benign_dataset
+argus download_benign_dataset \
+  --split train \
+  --repositories-per-language 100
 ```
 
-Downloads the benign CodeSearchNet-derived dataset using `src/scripts/download_dataset.py`.
+Downloads a repository-balanced benign subset from CodeSearchNet's Go, Java, JavaScript, PHP, Python, and Ruby configurations. The command selects the same number of unique repositories for every language, up to the requested maximum. If the least represented language has fewer eligible repositories, all languages are reduced to that count.
+
+Selection is deterministic with the default seed of `42`. Pass `--seed` to choose another deterministic sample. Repositories present in more than one CodeSearchNet language configuration are excluded to prevent duplicate repository identities and later train/test leakage.
+
+The downloader writes repositories beneath `configs/base.yaml -> paths.dataset/benign` using collision-safe `owner__repository` directory names. It refuses to append to an existing selected repository directory, because doing so would duplicate functions from an earlier export.
+
+Supported options:
+
+| Option                        | Default | Meaning                                           |
+| ----------------------------- | ------- | ------------------------------------------------- |
+| `--split train\|test`         | `train` | CodeSearchNet split                               |
+| `--repositories-per-language` | `100`   | maximum unique repositories selected per language |
+| `--seed`                      | `42`    | deterministic repository-selection seed           |
 
 ### Functionality generation
 
@@ -48,16 +62,21 @@ Reference: [02_FUNCTIONALITY_GENERATION.md](./02_FUNCTIONALITY_GENERATION.md)
 argus generate_functionalities_batch_api
 ```
 
-Creates OpenAI Batch API JSONL request files, submits them, polls until completion, and downloads raw output/error files.
+Creates OpenAI Batch API JSONL request files, submits them, polls until completion, downloads output/error files, and imports successful functionality results.
 
-Current output directories:
+Batch files are submitted and monitored concurrently. The concurrency limit is
+configured with `batch_functionality.max_concurrent_batches` in
+`configs/llms.yaml` and defaults to `3`. Any failed file prevents result import
+from being reported as a successful complete wave.
+
+The command uses the validated `batch_functionality` section in `configs/llms.yaml`. It currently targets `gpt-5.6-luna` through `/v1/responses`, imports successful outputs into PostgreSQL, and writes its artifacts to:
 
 ```text
-api_batches_extra/
-batch_results_extra/
+api_batches/
+batch_results/
 ```
 
-Important: downloaded Batch API result files are not automatically parsed into PostgreSQL by this command.
+Move completed artifacts before starting another run; the command refuses to mix or overwrite existing JSONL request and result files.
 
 ### Cached functionality import
 
@@ -66,6 +85,14 @@ argus load_cache_functionalities /path/to/cached_functionalities
 ```
 
 Loads JSON files named like `functionalities_<snippet_id>.json`, inserts functionality rows, and marks snippets processed.
+
+### Functionality embeddings
+
+```bash
+argus embed
+```
+
+Creates missing embeddings for `functionalities.tag` in the Qdrant collection derived from `split.model_name`. Existing functionality point ids are skipped.
 
 ### Split
 
@@ -80,9 +107,9 @@ Reference: [03_EMBEDDING_AND_SPLITTING.md](./03_EMBEDDING_AND_SPLITTING.md)
 ### Clustering
 
 ```bash
-argus cluster --mode search
-argus cluster --mode train
-argus cluster --mode test
+argus cluster --mode search --config-path configs/clustering.yaml
+argus cluster --mode train --config-path configs/clustering.yaml
+argus cluster --mode test --config-path configs/clustering.yaml
 ```
 
 Modes:
@@ -100,10 +127,12 @@ Research workflow: [08_CLUSTERING_RESEARCH_GUIDE.md](./08_CLUSTERING_RESEARCH_GU
 ### Classification
 
 ```bash
-argus classify --mode search
-argus classify --mode train
-argus classify --mode test
+argus classify --mode search --config-path configs/classification.mlp.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
+
+All three modes require `--config-path`. Pass `configs/classification.transformer.yaml` to run the Transformer instead. Each file selects its matching checkpoint under `selected_models/` for test mode and has its own search and training output directories. The `argus train` and `argus test` wrappers require `--config-path` for classification and `--clustering-config-path` for clustering.
 
 Modes:
 
@@ -122,7 +151,7 @@ Classifier architectures are defined under the top-level `models` registry and s
 Explain the classifier selected by `classification.test`:
 
 ```bash
-argus explain-shap \
+argus explain-shap --config-path configs/classification.mlp.yaml \
   --class malicious \
   --split test \
   --background-split train \
@@ -134,14 +163,16 @@ argus explain-shap \
 
 The command reuses the test-mode model profile, cluster count, label mapping, encoder, dataset splits, and `load_model_dir`. It verifies the classifier manifest and checksum contract before computing explanations. `GradientExplainer` currently supports the MLP and the Transformer with `input_encoding: "cluster_distribution"`; ordered-token LSTM and Transformer inputs are discrete and are rejected with an actionable error.
 
-The output directory contains `shap_values.npy`, the explained input rows, repository ids and labels, `meta.json`, a global summary plot, a signed-mean plot, and a waterfall plot for the first explained repository. Use `--config-path` for a non-default classification YAML and `--device cpu|cuda|auto` to control execution.
+The output directory contains `shap_values.npy`, the explained input rows, repository ids and labels, `meta.json`, a global summary plot, a signed-mean plot, and a waterfall plot for the first explained repository. Select the classifier with the required `--config-path` and control execution with `--device cpu|cuda|auto`.
+
+Use `--cluster-descriptions PATH` to add titles from a [JSON mapping for the fitted clusterer](./05_REPOSITORY_CLASSIFICATION.md#shap-explanations).
 
 ### Confusion-matrix plots
 
 Evaluate the classifier selected by `classification.test` and plot its confusion matrix:
 
 ```bash
-argus confusion-matrix \
+argus confusion-matrix --config-path configs/classification.mlp.yaml \
   --split test \
   --log-scale \
   --format png \
@@ -153,11 +184,13 @@ The command uses the configured model profile, encoder, labels, split, and `load
 ### Repository encoding inspection
 
 ```bash
-argus-inspect-distribution --repository-id 123
-argus-inspect-timeseries --repository-id 123
+argus-inspect-distribution --config configs/classification.mlp.yaml --repository-id 123
+argus-inspect-timeseries --config configs/classification.mlp.yaml --repository-id 123
 ```
 
 These scripts load one repository from PostgreSQL, print its files/snippets/functionalities, and show how the repository is encoded.
+
+Pass `--config` to read the cluster count from a classification YAML, or supply the count directly with `--num-clusters`.
 
 Use `--repository-name <name>` instead of `--repository-id` when the repository name is easier to target.
 
@@ -176,8 +209,8 @@ Reference: [05_REPOSITORY_CLASSIFICATION.md](./05_REPOSITORY_CLASSIFICATION.md#e
 ### Pipeline wrappers
 
 ```bash
-argus train
-argus test
+argus train --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
+argus test --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 Current wrapper behavior:
@@ -194,12 +227,12 @@ These wrappers do not execute loading, functionality generation, embedding creat
 ```bash
 argus load
 argus generate_functionalities
-# ensure embeddings exist in Qdrant for functionalities.tag
+argus embed
 argus split
-argus cluster --mode train
-argus classify --mode train
-argus cluster --mode test
-argus classify --mode test
+argus cluster --mode train --config-path configs/clustering.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
+argus cluster --mode test --config-path configs/clustering.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 ## Cached functionality workflow
@@ -207,32 +240,32 @@ argus classify --mode test
 ```bash
 argus load
 argus load_cache_functionalities /path/to/cached_functionalities
-# ensure embeddings exist in Qdrant
+argus embed
 argus split
-argus cluster --mode train
-argus classify --mode train
+argus cluster --mode train --config-path configs/clustering.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
 ```
 
 ## Model reuse workflow
 
 ```bash
-argus cluster --mode test
-argus classify --mode test
+argus cluster --mode test --config-path configs/clustering.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 Use this when:
 
 - `configs/clustering.yaml` points to the trained clusterer
-- `configs/classification.yaml` points to the trained classifier directory
+- the classification YAML passed with `--config-path` points to the trained classifier directory
 - test embeddings exist and have Qdrant payload `split=test`
 
 ## Output locations
 
-| Location                                                                                       | Content                                         |
-| ---------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `cache/functionalities-<llm_type>/`                                                            | parsed functionality caches                     |
-| `api_batches_extra/`                                                                           | Batch API request JSONL files                   |
-| `batch_results_extra/`                                                                         | downloaded Batch API outputs/errors             |
-| `models/clustering/trained_models/`                                                            | clustering joblib/ONNX bundles, manifests, and quality reports |
+| Location                                                                                       | Content                                                                |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `cache/functionalities-<llm_type>/`                                                            | parsed functionality caches                                            |
+| `api_batches/`                                                                                 | Batch API request JSONL files                                          |
+| `batch_results/`                                                                               | downloaded Batch API outputs/errors                                    |
+| `models/clustering/trained_models/`                                                            | clustering joblib/ONNX bundles, manifests, and quality reports         |
 | `models/classification/trained_models/`                                                        | classifier checkpoints, weights, ONNX, manifests, configs, and metrics |
-| `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | clustering search model, reports, CSV, and plot |
+| `models/clustering/searching_models/clusterers_<n>_<timestamp>/clusterer_<n>_<k>_<timestamp>/` | clustering search model, reports, CSV, and plot                        |

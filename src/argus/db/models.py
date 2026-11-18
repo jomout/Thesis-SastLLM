@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, false, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -13,13 +13,13 @@ class RepositoryModel(Base):
     repository_id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
     label = Column(String(255), nullable=True)
-    processed = Column(Boolean, default=False, nullable=False)
+    processed = Column(Boolean, default=False, server_default=false(), nullable=False)
     split = Column(String(50), nullable=True)  # e.g., 'train', 'val', 'test'
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
 
     # Relationships
-    files = relationship("FileModel", back_populates="repository")
+    files = relationship("FileModel", back_populates="repository", passive_deletes=True)
 
 
 class FileModel(Base):
@@ -27,17 +27,17 @@ class FileModel(Base):
 
     # Attributes
     file_id = Column(Integer, primary_key=True)
-    repository_id = Column(Integer, ForeignKey("repositories.repository_id"), nullable=False)
+    repository_id = Column(Integer, ForeignKey("repositories.repository_id", ondelete="CASCADE"), nullable=False)
     language = Column(String(50), nullable=False)
     filename = Column(String(255), nullable=False)
     filepath = Column(String(1024), nullable=False)
-    processed = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed = Column(Boolean, default=False, server_default=false(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
 
     # Relationships
     repository = relationship("RepositoryModel", back_populates="files")
-    snippets = relationship("SnippetModel", back_populates="file")
+    snippets = relationship("SnippetModel", back_populates="file", passive_deletes=True)
 
 
 class SnippetModel(Base):
@@ -45,17 +45,17 @@ class SnippetModel(Base):
 
     # Attributes
     snippet_id = Column(Integer, primary_key=True)
-    file_id = Column(Integer, ForeignKey("files.file_id"), nullable=False)
+    file_id = Column(Integer, ForeignKey("files.file_id", ondelete="CASCADE"), nullable=False)
     start_line = Column(Integer, nullable=False)
     end_line = Column(Integer, nullable=False)
     code = Column(Text, nullable=False)
-    processed = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed = Column(Boolean, default=False, server_default=false(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
 
     # Relationships
     file = relationship("FileModel", back_populates="snippets")
-    functionalities = relationship("FunctionalityModel", back_populates="snippet")
+    functionalities = relationship("FunctionalityModel", back_populates="snippet", passive_deletes=True)
 
 
 class FunctionalityModel(Base):
@@ -63,12 +63,12 @@ class FunctionalityModel(Base):
 
     # Attributes
     functionality_id = Column(Integer, primary_key=True)
-    snippet_id = Column(Integer, ForeignKey("snippets.snippet_id"), nullable=False)
+    snippet_id = Column(Integer, ForeignKey("snippets.snippet_id", ondelete="CASCADE"), nullable=False)
     description = Column(Text, nullable=False)
     tag = Column(Text, nullable=False)
     cluster_id = Column(Integer, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
 
     # Relationships
     snippet = relationship("SnippetModel", back_populates="functionalities")
@@ -85,8 +85,8 @@ class CSNCodeSnippetModel(Base):
     end_line = Column(Integer, nullable=False)
     code = Column(Text, nullable=False)
     functionality = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
 
 
 class RepositoryPredictionModel(Base):
@@ -94,13 +94,13 @@ class RepositoryPredictionModel(Base):
 
     # Attributes
     id = Column(Integer, primary_key=True)
-    repository_id = Column(Integer, ForeignKey("repositories.repository_id"), nullable=False)
+    repository_id = Column(Integer, ForeignKey("repositories.repository_id", ondelete="CASCADE"), nullable=False)
     method = Column(String(32), nullable=False)  # e.g., 'llm' | 'ml'
     classification = Column(String(64), nullable=True)  # 'malware' | 'benignware'
     flags_json = Column(JSONB, nullable=True)  # ["F1", "F6", ...]
     justification = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("clock_timestamp()"), onupdate=func.now(), nullable=False)
 
     # Relationships
     repository = relationship("RepositoryModel")

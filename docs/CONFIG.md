@@ -12,7 +12,8 @@ Configuration lives under `configs/`:
 | `llms.yaml`            | LLM provider and model for snippet functionality generation |
 | `split.yaml`           | embedding model, train/test ratios, binary labels           |
 | `clustering.yaml`      | clustering search/train/test parameters                     |
-| `classification.yaml`  | classifier train/test directories and hyperparameters       |
+| `classification.mlp.yaml` | MLP search/train/test settings                          |
+| `classification.transformer.yaml` | Transformer search/train/test settings          |
 | `languages.yaml`       | Tree-sitter grammar sources and supported suffixes          |
 | `important_nodes.yaml` | AST node types used as chunking breakpoints                 |
 | `comment_nodes.yaml`   | comment/decorator node types                                |
@@ -32,12 +33,12 @@ Logging:
 log:
   level: INFO
   file: logs/argus.log
-  file_level: DEBUG
+  file_level: INFO
   max_bytes: 10485760
   backup_count: 5
 ```
 
-Console logs use `log.level`. The rotating JSON-lines file uses `log.file_level`, so the default setup keeps normal console output readable while retaining detailed debugging context in `logs/argus.log`.
+Console logs use `log.level`. The rotating JSON-lines file uses `log.file_level`, and both thresholds default to `INFO`. Set `log.file_level` to `DEBUG` to capture more detail in `logs/argus.log`.
 
 Log-level intent:
 
@@ -81,12 +82,14 @@ clustering:
     elbow_window_factor: 2.0
     max_silhouette_singleton_fraction: 0.5
   train:
-    k: 10661
+    k: 4093
   test:
-    load_model_dir: "models/clustering/trained_models/clusterer_10661_<timestamp>"
+    load_model_dir: "models/clustering/selected_models/clusterer_4093_20261119_170651"
 ```
 
-The clustering test directory must contain `model.joblib`, `model.onnx`, and `manifest.json`. Test mode verifies the bundle and restores `model.joblib`.
+The clustering test directory must contain `model.joblib`, `model.onnx`, and `manifest.json`. Test mode verifies the bundle, reads the cluster count from the artifact, and restores `model.joblib`.
+
+The checked-in test configs pair `models/clustering/selected_models/clusterer_4093_20261119_170651` with `models/classification/selected_models/model_20261121_194135_mlp`. Classification search, training, and testing use a vocabulary of 4,093 clusters. When testing another classifier, use the clusterer that produced its training assignments and match the classifier's model profile and `params.k` to its manifest.
 
 Classification:
 
@@ -149,6 +152,8 @@ ACCESS_TOKEN
 
 Use the API key for the provider selected in `configs/llms.yaml`.
 
+OpenAI Batch functionality generation is configured separately from the online `snippet_processor` model under `batch_functionality` in `configs/llms.yaml`. This section controls the model, reasoning effort, output-token ceiling, snippet/request batch sizes, file-size guard, artifact directories, and polling limits. The default model is `gpt-5.6-luna` with reasoning effort `none` and `max_output_tokens: 8192`.
+
 ## Important notes
 
 - Only `snippet_processor` is currently supported by the LLM factory.
@@ -157,7 +162,7 @@ Use the API key for the provider selected in `configs/llms.yaml`.
 - Clustering search validates candidate K values with normalized inertia, cohesion, separation, Calinski-Harabasz, sampled silhouette, and cluster-size health.
 - Full silhouette is not computed for the complete embedding population; `clustering.evaluation` controls a seeded reservoir and cluster-stratified silhouette sample, and records reliability metadata.
 - The classifier `k` should match the clustering `k`.
-- `classification.yaml` may use `l1_param`; the classification config maps it to `l1_lambda`.
+- Classification YAML files may use `l1_param`; the classification config maps it to `l1_lambda`.
 - `use_weighted_sampler` controls training-batch rebalancing.
 - `use_class_weights` controls weighted `CrossEntropyLoss`.
 - `classification.<mode>.model` selects a strict profile from the top-level `models` registry.

@@ -48,13 +48,13 @@ sentence-transformers/all-mpnet-base-v2
   -> sentence-transformers_all-mpnet-base-v2
 ```
 
-Important: `uv run argus split` currently assigns split metadata but does not create missing embeddings because `embed_all_repositories()` is disabled in the command wrapper.
+Run `uv run argus embed` before `uv run argus split`. Embedding is a separate explicit stage; splitting assigns metadata but does not create missing vectors.
 
 Start and check the services:
 
 ```bash
-docker compose up -d
-docker compose ps
+docker compose -f docker-compose.argus.yml up -d
+docker compose -f docker-compose.argus.yml ps
 uv run argus cluster --help
 ```
 
@@ -100,7 +100,7 @@ Keep `sample_size` comfortably above the expected K. The current `100000` suppor
 ## Step 2: Run K search
 
 ```bash
-uv run argus cluster --mode search
+uv run argus cluster --mode search --config-path configs/clustering.yaml
 ```
 
 For each `n`, the command:
@@ -127,6 +127,7 @@ models/clustering/searching_models/clusterers_<n>_<timestamp>/
     manifest.json
     clusterer_<n>_<selected_k>_<timestamp>_quality.json
     clusterer_<n>_<selected_k>_<timestamp>_selection_quality.json
+    clusterer_<n>_<selected_k>_<timestamp>_selection_candidates.json
     clusterer_<n>_<selected_k>_<timestamp>_selection_candidates.csv
     clusterer_<n>_<selected_k>_<timestamp>_selection_quality.png
 ```
@@ -140,7 +141,7 @@ The plot contains:
 - separation RMS
 - silhouette cluster coverage
 
-The JSON report records `selected_k`, `selection_reason`, `elbow_k`, `silhouette_best_k`, `calinski_harabasz_best_k`, and all candidate measurements.
+The selection-quality JSON records `selected_k`, `selection_reason`, `elbow_k`, `silhouette_best_k`, `calinski_harabasz_best_k`, and all nested candidate measurements. The candidate JSON provides a flat list of every logged metric, including raw and normalized inertia, cluster-size statistics, silhouette, Calinski-Harabasz, cohesion, and separation.
 
 ## Step 3: Review the selected K
 
@@ -180,7 +181,7 @@ clustering:
     load_model_dir: "models/clustering/trained_models/clusterer_<selected_k>_<timestamp>"
 ```
 
-In `configs/classification.yaml`, set `params.k` under every classification mode that will be used:
+In the classification YAML selected with `--config-path`, set `params.k` under every classification mode that will be used:
 
 ```yaml
 classification:
@@ -200,7 +201,7 @@ The classifier feature dimension or token vocabulary depends on K. A mismatch ca
 ## Step 5: Train the final clusterer
 
 ```bash
-uv run argus cluster --mode train
+uv run argus cluster --mode train --config-path configs/clustering.yaml
 ```
 
 Expected behavior:
@@ -236,7 +237,7 @@ Inspect the train quality report before classification. Confirm that:
 Confirm that `test.load_model_dir` points to the newly trained model directory containing `model.joblib`, `model.onnx`, and `manifest.json`, then run:
 
 ```bash
-uv run argus cluster --mode test
+uv run argus cluster --mode test --config-path configs/clustering.yaml
 ```
 
 Expected behavior:
@@ -256,15 +257,15 @@ Standalone joblib and ONNX artifacts without the current manifest are not loadab
 Run classification explicitly so clustering results can be inspected between stages:
 
 ```bash
-uv run argus classify --mode train
-uv run argus classify --mode test
+uv run argus classify --mode train --config-path configs/classification.mlp.yaml
+uv run argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 The wrappers are available after configuration is finalized:
 
 ```bash
-uv run argus train
-uv run argus test
+uv run argus train --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
+uv run argus test --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 They execute:
@@ -276,11 +277,11 @@ test  -> cluster test  -> classification test
 
 They do not perform data loading, functionality generation, embedding creation, splitting, or K search.
 
-## Methodological caveat
+## K selection and the test split
 
-The current `search` implementation reads the first `n` vectors from the complete Qdrant collection without filtering on `split=train`. This is a transductive vocabulary-selection setup: test embeddings can influence K even though labels are not used.
+Clustering search fits candidate models and draws the sample used to score them from Qdrant vectors tagged `split=train`. Training fits the selected K on the training split. Test mode loads the saved clusterer and assigns vectors tagged `split=test` to its frozen centroids.
 
-For an explicitly inductive evaluation, K selection should be changed to use only `split=train`. Until then, state the search scope in the thesis and do not describe K as selected exclusively from training data.
+This separation depends on Qdrant split tags matching the repository splits in PostgreSQL. After changing the dataset or split, synchronize the tags, rerun K selection and clustering training on the current training partition, and use the resulting clusterer for final test evaluation. Choose K before inspecting final test scores.
 
 ## Reproducibility checklist
 
@@ -303,19 +304,19 @@ Running search again with the same `n` and output directories overwrites files w
 
 ```bash
 # Services and preconditions
-docker compose up -d
+docker compose -f docker-compose.argus.yml up -d
 uv run argus split
 
 # K selection and review
-uv run argus cluster --mode search
+uv run argus cluster --mode search --config-path configs/clustering.yaml
 
 # After synchronizing the accepted K in both YAML files
-uv run argus cluster --mode train
-uv run argus cluster --mode test
+uv run argus cluster --mode train --config-path configs/clustering.yaml
+uv run argus cluster --mode test --config-path configs/clustering.yaml
 
 # Downstream experiment
-uv run argus classify --mode train
-uv run argus classify --mode test
+uv run argus classify --mode train --config-path configs/classification.mlp.yaml
+uv run argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 Do not run `split` unless the embeddings already exist and PostgreSQL/Qdrant are ready to receive synchronized split metadata.

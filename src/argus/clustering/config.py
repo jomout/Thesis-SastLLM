@@ -52,7 +52,7 @@ class ClusteringConfig:
     test: TestConfig
 
     @classmethod
-    def from_yaml(cls, config_path: str | Path = "configs/clustering.yaml") -> ClusteringConfig:
+    def from_yaml(cls, config_path: str | Path) -> ClusteringConfig:
         raw = load_yaml(config_path).get("clustering", {})
         if not isinstance(raw, dict) or not raw:
             raise ValueError(f"No 'clustering' section found in {config_path}.")

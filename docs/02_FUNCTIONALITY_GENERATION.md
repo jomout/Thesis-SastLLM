@@ -109,14 +109,19 @@ The tag is what later stages embed and cluster.
 
 The batch command currently:
 
-1. Uses model `gpt-5-mini`.
-2. Writes request files under `api_batches_extra/`.
-3. Uses `BatchFilesGenerator` with `snippet_batch_size=20` and `api_batch_size=500`.
-4. Submits JSONL files to OpenAI Batch API with endpoint `/v1/responses`.
-5. Polls every `60` seconds for up to `30` hours.
-6. Downloads output/error JSONL files under `batch_results_extra/`.
+1. Loads validated `batch_functionality` settings from `configs/llms.yaml`.
+2. Uses `gpt-5.6-luna` with reasoning effort `none` and an 8192-token output ceiling.
+3. Writes request files under `api_batches/`.
+4. Uses `BatchFilesGenerator` with `snippet_batch_size=20` and `requests_per_file=500`.
+5. Submits JSONL files to OpenAI Batch API with endpoint `/v1/responses`.
+6. Processes up to three Batch API files concurrently, polling every `60` seconds for up to `30` hours, and handles completed, failed, expired, and cancelled terminal states.
+7. Downloads output/error JSONL files under `batch_results/`.
+8. Uses `BatchFunctionalityResultImporter` to import successful output files into PostgreSQL.
+9. Parses successful Responses API output text, inserts normalized functionality rows, and marks the corresponding snippets processed.
 
-Important limitation: the batch submitter downloads raw result files, but does not itself parse those downloaded Batch API outputs back into the database. Database import is handled by `load_cache_functionalities`, which expects local JSON files named like:
+Each JSONL request has a unique `custom_id`, uses `store=false`, and is checked against a 190 MB configured ceiling below the Batch API's 200 MB limit. Existing request or result JSONL files cause the command to stop rather than overwrite or resubmit them.
+
+The importer also caches each parsed snippet result as a local JSON file named:
 
 ```text
 functionalities_<snippet_id>.json
@@ -126,7 +131,7 @@ Each JSON file should contain objects compatible with `CreateFunctionalityDto`.
 
 ## LLM configuration
 
-`configs/llms.yaml` currently defines only the `snippet_processor` model:
+`configs/llms.yaml` defines the online `snippet_processor` model and a separate strict `batch_functionality` configuration:
 
 ```yaml
 models:
@@ -138,6 +143,19 @@ models:
       max_tokens: null
       timeout: null
       max_retries: 5
+
+batch_functionality:
+  model: "gpt-5.6-luna"
+  reasoning_effort: "none"
+  max_output_tokens: 8192
+  snippet_batch_size: 20
+  requests_per_file: 500
+  max_file_size_bytes: 190000000
+  batch_files_dir: "api_batches"
+  results_dir: "batch_results"
+  max_concurrent_batches: 3
+  poll_interval_seconds: 60
+  max_wait_hours: 30
 ```
 
 Supported hosts in the factory are:
@@ -157,6 +175,8 @@ Supported hosts in the factory are:
 | `functionalities.cluster_id`        | initially `NULL`                    |
 | `snippets.processed`                | set to `true` after processing      |
 | `cache/functionalities-<llm_type>/` | debugging/import cache              |
+| `api_batches/`                      | OpenAI Batch request JSONL files    |
+| `batch_results/`                    | downloaded output/error JSONL files |
 
 ## Failure behavior
 

@@ -82,7 +82,13 @@ class MiniBatchKMeansClusterer:
             return np.empty((0, 2), dtype=np.int64)
         return np.concatenate(batches, axis=0)
 
-    def save_model(self, model_dir: str | Path, *, metadata: Mapping[str, Any] | None = None) -> None:
+    def save_model(
+        self,
+        model_dir: str | Path,
+        *,
+        validation_samples: np.ndarray,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> None:
         if self.kmeans is None or self.n_clusters is None:
             raise RuntimeError("Model must be fit before saving.")
 
@@ -91,6 +97,7 @@ class MiniBatchKMeansClusterer:
             model_dir=model_dir,
             metadata=metadata,
             random_state=self.random_state,
+            validation_samples=validation_samples,
         )
 
     def load_model(self, model_dir: str | Path, *, expected_metadata: Mapping[str, Any] | None = None) -> None:

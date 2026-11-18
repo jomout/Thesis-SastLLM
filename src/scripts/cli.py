@@ -26,6 +26,11 @@ class RepositorySplit(str, Enum):
     test = "test"
 
 
+class CodeSearchNetSplit(str, Enum):
+    train = "train"
+    test = "test"
+
+
 class ComputeDevice(str, Enum):
     auto = "auto"
     cpu = "cpu"
@@ -100,9 +105,19 @@ def run_split():
     split_dataset()
 
 
+@app.command("embed")
+def run_embed():
+    """Create missing functionality embeddings in Qdrant."""
+    from .pipelines import embed_functionalities
+
+    logger.info("Starting functionality embedding pipeline.")
+    embed_functionalities()
+
+
 @app.command("cluster")
 def run_cluster(
     mode: Annotated[ClusteringMode, typer.Option("--mode", "-m")],
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Clustering YAML for the selected mode.")],
 ):
     """
     Run the clustering pipeline.
@@ -112,28 +127,25 @@ def run_cluster(
     from .pipelines import cluster_functionalities
 
     logger.info("Starting clustering pipeline.")
-    cluster_functionalities(mode.value)
+    cluster_functionalities(mode.value, config_path=config_path)
 
 
 # --- Classification ---
 @app.command("classify")
 def run_classify(
     mode: Annotated[ClassificationMode, typer.Option("--mode", "-m")],
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Classification YAML for the selected architecture.")],
 ):
-    """
-    Run the classification pipeline.
-
-    This command classifies functionalities based on their similarity.
-    """
+    """Search, train, or test a repository classifier."""
     from .pipelines import classify_repositories
 
     logger.info("Starting classification pipeline.")
-    classify_repositories(mode=mode.value)
+    classify_repositories(mode=mode.value, config_path=config_path)
 
 
 @app.command("explain-shap")
 def run_explain_shap(
-    config_path: Annotated[Path, typer.Option(help="Classification YAML containing the test model contract.")] = Path("configs/classification.yaml"),
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Classification YAML containing the test model contract.")],
     output_dir: Annotated[Path, typer.Option(help="Directory for SHAP arrays, metadata, and plots.")] = Path("plots/shap"),
     explained_class: Annotated[str, typer.Option("--class", help="Configured label whose probability should be explained.")] = "malicious",
     split: Annotated[RepositorySplit, typer.Option(help="Repository split to explain.")] = RepositorySplit.test,
@@ -143,6 +155,7 @@ def run_explain_shap(
     top_features: Annotated[int, typer.Option(min=1, help="Maximum number of features displayed in each plot.")] = 30,
     device: Annotated[ComputeDevice, typer.Option(help="Compute device; auto selects CUDA when available.")] = ComputeDevice.auto,
     seed: Annotated[int | None, typer.Option(help="SHAP sampling seed; defaults to classification.test.params.seed.")] = None,
+    cluster_descriptions: Annotated[Path | None, typer.Option(help="JSON mapping of cluster IDs to descriptions for the fitted clusterer.")] = None,
 ) -> None:
     """Explain the configured repository classifier with SHAP."""
     from argus.utils.explain_shapley import ShapExplanationConfig, run_shap
@@ -159,6 +172,7 @@ def run_explain_shap(
             top_features=top_features,
             device=device.value,
             seed=seed,
+            cluster_descriptions_path=cluster_descriptions,
         )
     )
     typer.echo(f"SHAP artifacts written to {output_path}")
@@ -166,7 +180,7 @@ def run_explain_shap(
 
 @app.command("confusion-matrix")
 def run_confusion_matrix_command(
-    config_path: Annotated[Path, typer.Option(help="Classification YAML containing the test model contract.")] = Path("configs/classification.yaml"),
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Classification YAML containing the test model contract.")],
     output_dir: Annotated[Path, typer.Option(help="Directory for confusion-matrix plots and metadata.")] = Path("plots/confusion_matrix"),
     split: Annotated[RepositorySplit, typer.Option(help="Repository split to evaluate.")] = RepositorySplit.test,
     log_scale: Annotated[bool, typer.Option("--log-scale/--linear-scale", help="Use logarithmic colors for the count matrix.")] = True,
@@ -189,30 +203,41 @@ def run_confusion_matrix_command(
 
 # --- Pipelines ---
 @app.command("train")
-def run_train_pipeline():
+def run_train_pipeline(
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Classification YAML for the training pipeline.")],
+    clustering_config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Clustering YAML for the training pipeline.")],
+):
     """
     Run the training pipeline.
     """
     from .pipelines import train_pipeline
 
     logger.info("Starting classification pipeline.")
-    train_pipeline()
+    train_pipeline(config_path=config_path, clustering_config_path=clustering_config_path)
 
 
 @app.command("test")
-def run_test_pipeline():
+def run_test_pipeline(
+    config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Classification YAML for the testing pipeline.")],
+    clustering_config_path: Annotated[Path, typer.Option(exists=True, dir_okay=False, readable=True, help="Clustering YAML for the testing pipeline.")],
+):
     """
     Run the testing pipeline.
     """
     from .pipelines import test_pipeline
 
     logger.info("Starting testing pipeline.")
-    test_pipeline()
+    test_pipeline(config_path=config_path, clustering_config_path=clustering_config_path)
 
 
 # --- Setup ---
 @app.command("load")
-def run_load():
+def run_load(
+    dataset_path: Annotated[
+        Path | None,
+        typer.Option(help="Dataset root to load instead of configs/base.yaml -> paths.dataset."),
+    ] = None,
+):
     """
     Run the loading pipeline.
 
@@ -221,11 +246,15 @@ def run_load():
     from .pipelines import load_dataset
 
     logger.info("Starting loading project.")
-    load_dataset()
+    load_dataset(dataset_path=dataset_path)
 
 
 @app.command("download_benign_dataset")
-def run_setup_eval():
+def run_setup_eval(
+    split: Annotated[CodeSearchNetSplit, typer.Option(help="CodeSearchNet split to download.")] = CodeSearchNetSplit.train,
+    repositories_per_language: Annotated[int, typer.Option(min=1, help="Maximum repositories selected for each CodeSearchNet language.")] = 100,
+    seed: Annotated[int, typer.Option(help="Deterministic repository-selection seed.")] = 42,
+):
     """
     Run the downloading benign dataset pipeline.
 
@@ -234,8 +263,17 @@ def run_setup_eval():
     """
     from .download_dataset import download_benign_dataset
 
-    logger.info("Starting downloading benign dataset (CSN).")
-    download_benign_dataset()
+    logger.info(
+        "Starting balanced benign CodeSearchNet download",
+        split=split.value,
+        repositories_per_language=repositories_per_language,
+        seed=seed,
+    )
+    download_benign_dataset(
+        split=split.value,
+        repositories_per_language=repositories_per_language,
+        seed=seed,
+    )
 
 
 @app.command("load_cache_functionalities")

@@ -2,6 +2,17 @@
 
 This document describes the PostgreSQL schema used by the SAST-LLM pipeline. For the broader storage picture, including Qdrant, see [06_STORAGE_AND_DATA_ACCESS.md](./06_STORAGE_AND_DATA_ACCESS.md).
 
+## Schema management
+
+Alembic migrations under `database/migrations/` are the authoritative schema history. `database/00__init.sql` and `database/01__triggers.sql` are retained as legacy bootstrap and reference artifacts and are not applied automatically by Docker Compose. Use `uv run alembic upgrade head` after starting PostgreSQL.
+
+The baseline is split into two revisions so populated legacy databases can be adopted safely:
+
+- `0001_core_schema` represents the four legacy core tables, indexes, timestamp triggers, and processed-state triggers.
+- `0002_aux_tables` adds `csn_snippets` and `repository_predictions`.
+
+See [SETUP.md](./SETUP.md#database-migrations) before stamping or upgrading an existing database.
+
 ## Core hierarchy
 
 ```text
@@ -167,12 +178,15 @@ argus generate_functionalities
   -> snippets.processed=true
   -> trigger updates files/repositories processed
 
+argus embed
+  -> Qdrant functionality vectors
+
 argus split
   -> repositories.split
 
-argus cluster --mode ...
+argus cluster --mode ... --config-path configs/clustering.yaml
   -> functionalities.cluster_id
 
-argus classify --mode ...
+argus classify --mode ... --config-path configs/classification.mlp.yaml
   -> reads processed repositories and cluster counts
 ```

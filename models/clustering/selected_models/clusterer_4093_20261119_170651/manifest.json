@@ -1,0 +1,52 @@
+{
+  "algorithm": "sklearn.cluster.MiniBatchKMeans",
+  "artifact_type": "functionality_clusterer",
+  "created_at": "2026-11-19T17:12:46.264137+00:00",
+  "embedding_dimension": 768,
+  "files": {
+    "model.joblib": {
+      "bytes": 12597446,
+      "sha256": "a65c880cc002ba450487f8927424ea741479fa735993166b849cfb15c790ea34"
+    },
+    "model.onnx": {
+      "bytes": 25180849,
+      "sha256": "826d12d5cf762a5a944a1287394b24ea2c54792884f455ba9ac3800e3d2cfbab"
+    }
+  },
+  "input": {
+    "dtype": "float32",
+    "name": "X",
+    "normalization": "l2",
+    "shape": [
+      null,
+      768
+    ]
+  },
+  "metadata": {
+    "clusterer": "MiniBatchKMeans",
+    "embedding_collection": "sentence-transformers_all-mpnet-base-v2",
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "normalize_embeddings": true,
+    "random_state": 42,
+    "schema_version": 1
+  },
+  "n_clusters": 4093,
+  "schema_version": 1,
+  "validation": {
+    "assignment_distance_absolute_tolerance": 1e-06,
+    "assignment_distance_relative_tolerance": 1e-05,
+    "assignment_squared_distance_roundoff_tolerance": 4.76837158203125e-07,
+    "distance_equivalent_mismatches": 6,
+    "float32_roundoff_mismatches": 1,
+    "input_name": "X",
+    "label_mismatches": 7,
+    "maximum_absolute_assignment_distance_delta": 5.155799296835131e-06,
+    "maximum_relative_assignment_distance_delta": 0.8432043301746418,
+    "onnx_sklearn_assignment_distance_equivalence": false,
+    "onnx_sklearn_prediction_parity": false,
+    "output_name": "label",
+    "sample_source": "evaluation_reservoir",
+    "samples": 256,
+    "validation_passed": true
+  }
+}
