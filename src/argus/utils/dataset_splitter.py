@@ -24,7 +24,6 @@ class DatasetSplitter:
         self.repository_db = RepositoryManager()
         self.functionality_db = FunctionalityManager()
         self.embeddings_manager = EmbeddingsManager()
-        self.embedder = Embedder(model_name=model_name)
         self.model_name = model_name
 
         self.collection_name = self.model_name.replace("/", "_")
@@ -102,6 +101,7 @@ class DatasetSplitter:
         logger.info(f"Total functionalities to embed: {len(all_functionalities)}")
 
         try:
+            embedder = Embedder(model_name=self.model_name)
             for i in tqdm(
                 range(0, len(all_functionalities), self.BATCH_SIZE),
                 desc="Embedding (batched)",
@@ -110,7 +110,7 @@ class DatasetSplitter:
 
                 func_pairs = [(fid, tag) for fid, tag, _ in batch]
 
-                embeddings = self.embedder.embed(func_ids_tags=func_pairs)
+                embeddings = embedder.embed(func_ids_tags=func_pairs)
 
                 self.embeddings_manager.insert_embeddings(
                     collection_name=self.collection_name,

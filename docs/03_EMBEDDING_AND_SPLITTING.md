@@ -2,9 +2,10 @@
 
 This stage manages repository train/test assignment and Qdrant payload metadata for functionality embeddings.
 
-## CLI entrypoint
+## CLI entrypoints
 
 ```bash
+argus embed
 argus split
 ```
 
@@ -17,13 +18,15 @@ Implementation paths:
 
 ## Current command behavior
 
-The current `split_dataset()` implementation reads `configs/split.yaml`, constructs `DatasetSplitter`, and calls:
+`argus embed` reads `configs/split.yaml`, constructs `DatasetSplitter`, and calls `embed_all_repositories()`. Existing Qdrant point ids are skipped.
+
+The `split_dataset()` implementation constructs the same service and calls:
 
 ```python
 database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 ```
 
-The call to `embed_all_repositories()` exists but is currently commented out in the pipeline wrapper. This means `argus split` updates split labels in PostgreSQL and Qdrant payloads, but it assumes the Qdrant collection and functionality embeddings already exist.
+Embedding remains a separate explicit operation because it is expensive and stateful. `argus split` updates split labels in PostgreSQL and Qdrant payloads, and assumes `argus embed` has already populated the collection. The SentenceTransformer is initialized lazily by the embedding operation, so `argus split` does not load or contact the model.
 
 ## Split configuration
 
@@ -64,7 +67,7 @@ If `test_size` is exactly `1.0`, all repositories go to test and train is empty.
 
 ## Embedding helper behavior
 
-Although it is not called by the current CLI wrapper, `DatasetSplitter.embed_all_repositories()` can:
+`argus embed` invokes `DatasetSplitter.embed_all_repositories()`, which can:
 
 1. Fetch all repositories.
 2. Fetch all functionalities grouped by repository.

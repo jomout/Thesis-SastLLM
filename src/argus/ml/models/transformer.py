@@ -68,13 +68,9 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
         self.max_sequence_length = max_sequence_length
         self.pooling = pooling
         if input_encoding == "ordered_tokens":
-            self.token_embedding: nn.Embedding | None = nn.Embedding(input_dim, embedding_dim, padding_idx=0)
-            self.position_embedding: nn.Embedding | None = nn.Embedding(max_sequence_length, embedding_dim)
-            self.cluster_embedding: nn.Embedding | None = None
-            self.frequency_projection: nn.Linear | None = None
+            self.token_embedding = nn.Embedding(input_dim, embedding_dim, padding_idx=0)
+            self.position_embedding = nn.Embedding(max_sequence_length, embedding_dim)
         else:
-            self.token_embedding = None
-            self.position_embedding = None
             self.cluster_embedding = nn.Embedding(input_dim, embedding_dim)
             self.frequency_projection = nn.Linear(1, embedding_dim)
         encoder_layer = nn.TransformerEncoderLayer(
@@ -84,7 +80,7 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
             dropout=dropout,
             activation="gelu",
             batch_first=True,
-            norm_first=True,  # Set this to true
+            norm_first=True,
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.output_norm = nn.LayerNorm(embedding_dim)
@@ -95,7 +91,10 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
         if x.ndim != 2:
             raise ValueError(f"TransformerRepositoryClassifier expects a rank-2 input, got shape {tuple(x.shape)}.")
 
-        sequence, valid_steps = self._embed_input(x)
+        if self.input_encoding == "ordered_tokens":
+            sequence, valid_steps = self._embed_ordered_tokens(x)
+        else:
+            sequence, valid_steps = self._embed_cluster_distribution(x)
         has_valid_steps = valid_steps.any(dim=1)
         padding_mask = ~valid_steps
 
@@ -108,19 +107,11 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
         pooled = self._pool(encoded, valid_steps, has_valid_steps)
         return self.classifier(self.dropout(pooled))
 
-    def _embed_input(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.input_encoding == "ordered_tokens":
-            return self._embed_ordered_tokens(x)
-        return self._embed_cluster_distribution(x)
-
     def _embed_ordered_tokens(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.size(1) == 0:
             raise ValueError("Transformer token sequences must contain at least one timestep.")
         if x.size(1) > self.max_sequence_length:
             raise ValueError(f"Sequence length {x.size(1)} exceeds configured maximum {self.max_sequence_length}.")
-        if self.token_embedding is None or self.position_embedding is None:
-            raise RuntimeError("Ordered-token input layers are not initialized.")
-
         tokens = x.long()
         valid_steps = tokens != 0
         positions = torch.arange(tokens.size(1), device=tokens.device).unsqueeze(0)
@@ -130,18 +121,21 @@ class TransformerRepositoryClassifier(RepositoryClassifierModule):
     def _embed_cluster_distribution(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.size(1) != self.input_dim:
             raise ValueError(f"Expected cluster-distribution input shape (N, {self.input_dim}), got {tuple(x.shape)}.")
-        # Tensor-dependent Python control flow cannot be captured by torch.export.
-        # Encoders enforce this contract before ONNX inference; retain the eager-mode
-        # validation for direct PyTorch callers.
+        # The encoder enforces non-negative frequencies for exported models.
         if not torch.compiler.is_compiling() and torch.any(x < 0):
             raise ValueError("Cluster-distribution features must be non-negative.")
-        if self.cluster_embedding is None or self.frequency_projection is None:
-            raise RuntimeError("Cluster-distribution input layers are not initialized.")
 
         # Attention is quadratic, so represent only the strongest nonzero
         # clusters while retaining both cluster identity and frequency.
         token_count = min(self.max_sequence_length, self.input_dim)
-        frequencies, cluster_ids = torch.topk(x.float(), k=token_count, dim=1, sorted=True)
+        distribution = x.float()
+        # Break cutoff ties by cluster id in both PyTorch and ONNX. Keep the
+        # float64 ranking adjustment below the spacing between distinct float32 values.
+        cluster_order = torch.arange(self.input_dim, device=x.device, dtype=torch.float64)
+        tie_break = cluster_order * (torch.finfo(torch.float32).eps / (4 * self.input_dim))
+        ranking = distribution.double() * (1 - tie_break)
+        cluster_ids = ranking.topk(token_count, dim=1).indices
+        frequencies = distribution.gather(1, cluster_ids)
         valid_steps = frequencies > 0
         sequence = self.cluster_embedding(cluster_ids) + self.frequency_projection(frequencies.unsqueeze(-1))
         return sequence, valid_steps

@@ -5,15 +5,15 @@ This stage converts clustered functionality ids into repository-level vectors an
 ## CLI entrypoints
 
 ```bash
-argus classify --mode search
-argus classify --mode train
-argus classify --mode test
-argus explain-shap
-argus confusion-matrix
-argus-inspect-distribution --repository-id <id>
-argus-inspect-timeseries --repository-id <id>
-argus train
-argus test
+argus classify --mode search --config-path configs/classification.mlp.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
+argus explain-shap --config-path configs/classification.mlp.yaml
+argus confusion-matrix --config-path configs/classification.mlp.yaml
+argus-inspect-distribution --config configs/classification.mlp.yaml --repository-id <id>
+argus-inspect-timeseries --config configs/classification.mlp.yaml --repository-id <id>
+argus train --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
+argus test --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 Implementation paths:
@@ -29,18 +29,15 @@ Implementation paths:
 
 ## High-level wrappers
 
-The high-level wrappers are compact aliases:
-
-```text
-argus train -> cluster --mode train -> classify --mode train
-argus test  -> cluster --mode test  -> classify --mode test
-```
+The high-level wrappers run clustering first and classification second in the selected mode. They pass `--clustering-config-path` to the clustering stage and `--config-path` to the classification stage.
 
 They do not load data, split data, generate functionalities, or create embeddings.
 
 ## Configuration
 
-Current `configs/classification.yaml`:
+Pass `--config-path` to every `argus classify` invocation. Use `configs/classification.mlp.yaml` for the MLP or `configs/classification.transformer.yaml` for the cluster-distribution Transformer. Both files define search, train, and test settings. The high-level wrappers require `--config-path` for classification and `--clustering-config-path` for clustering.
+
+Example classification configuration:
 
 ```yaml
 models:
@@ -222,7 +219,7 @@ The Transformer supports two explicit input representations:
 - `input_encoding: "ordered_tokens"` preserves functionality order. It uses integer cluster tokens, learned positional embeddings, and padding masks.
 - `input_encoding: "cluster_distribution"` ignores functionality order and operates on aggregate cluster frequencies. Each attended element combines a learned cluster-identity embedding with its normalized frequency.
 
-A complete distribution may contain more than ten thousand columns, so distribution mode does not run self-attention over every column. It selects up to `max_sequence_length` of the most frequent nonzero clusters per repository. Zero-frequency clusters are masked. This bounds the quadratic attention cost while preserving the strongest components of the distribution.
+A complete distribution may contain more than ten thousand columns, so distribution mode selects up to `max_sequence_length` of the most frequent nonzero clusters per repository. Ties at the cutoff favor lower cluster IDs in both PyTorch and ONNX. The selected tokens use the original frequencies, and zero-frequency tokens are masked. Earlier checkpoints use this tie rule when loaded with the current code, so predictions can change for distributions with a tie at the cutoff.
 
 Distribution mode uses no positional embeddings because cluster identities, rather than positions, distinguish its elements. Use `pooling: "mean"` or `pooling: "max"`; `pooling: "last"` is rejected because a distribution has no meaningful final element.
 
@@ -309,12 +306,14 @@ For testing, set `classification.test.model` to `transformer` and point `load_mo
 `argus explain-shap` explains the class probability produced by the classifier configured under `classification.test`. It constructs the same encoder and data module as classification, loads the checkpoint through `RepositoryClassificationService`, and verifies the saved manifest, checksums, model profile, `k`, labels, and encoder contract.
 
 ```bash
-argus explain-shap --class malicious --split test --output-dir plots/shap
+argus explain-shap --config-path configs/classification.mlp.yaml --class malicious --split test --output-dir plots/shap
 ```
 
 The train split is the default SHAP background. Sampling is deterministic: repositories retain data-module order and SHAP uses `classification.test.params.seed` unless `--seed` overrides it. Sample limits, the background split, displayed feature count, configuration path, and compute device are CLI options; run `argus explain-shap --help` for the complete interface.
 
 The current gradient-based explanation path requires floating-point cluster-distribution features. It supports MLP and cluster-distribution Transformer classifiers. It does not reinterpret discrete ordered-token inputs as continuous values, so LSTM and ordered-token Transformer configurations fail before checkpoint explanation with an explicit compatibility error.
+
+Use `--cluster-descriptions PATH` to label plots with a JSON object that maps zero-based cluster IDs to non-empty titles, such as `{"23": "Sorting and Ordering"}`. Omitted IDs are displayed with the generic label `Unknown cluster`. Only use `configs/cluster_descriptions_4093_20261119_170651.json` for assignments from `clusterer_4093_20261119_170651`. Cluster IDs depend on the fitted clusterer, even when two clusterers have the same `k`. The command checks the ID range against the classifier's `k`, and the caller selects the file that matches the cluster assignments.
 
 Artifacts written under the selected output directory are:
 
@@ -322,14 +321,14 @@ Artifacts written under the selected output directory are:
 - `summary_bar.png` for global mean absolute importance
 - `signed_mean.png` for the direction of average class-probability contributions
 - `local_waterfall.png` for the first explained repository
-- `meta.json` with the model profile, source splits, seed, class index, and base value
+- `meta.json` with the model profile, source splits, seed, class index, base value, and optional cluster descriptions path
 
 ## Confusion-matrix plots
 
 `argus confusion-matrix` evaluates the classifier configured under `classification.test` through `RepositoryClassificationService`. It therefore uses the same model factory, encoder, repository split, label mapping, checkpoint loader, and manifest verification as normal test evaluation. Unlike the legacy plotting utility, it does not contain manually entered confusion-matrix values or execute plotting at import time.
 
 ```bash
-argus confusion-matrix --split test --output-dir plots/confusion_matrix
+argus confusion-matrix --config-path configs/classification.mlp.yaml --split test --output-dir plots/confusion_matrix
 ```
 
 The count plot uses logarithmic colors by default so minority-class errors remain visible next to the larger benign counts. Pass `--linear-scale` for a linear count plot. The normalized plot always uses a linear scale and divides each row by its true-class support, making every row interpretable as recall proportions. Empty true-class rows remain zero rather than producing `NaN` values.
@@ -372,8 +371,8 @@ Two scripts inspect a single repository from PostgreSQL, print its files/snippet
 Distribution encoder:
 
 ```bash
-argus-inspect-distribution --repository-id 123
-argus-inspect-distribution --repository-name owner/repo
+argus-inspect-distribution --config configs/classification.mlp.yaml --repository-id 123
+argus-inspect-distribution --config configs/classification.mlp.yaml --repository-name owner/repo
 ```
 
 This prints:
@@ -387,8 +386,8 @@ This prints:
 Time-series encoder:
 
 ```bash
-argus-inspect-timeseries --repository-id 123
-argus-inspect-timeseries --repository-name owner/repo
+argus-inspect-timeseries --config configs/classification.mlp.yaml --repository-id 123
+argus-inspect-timeseries --config configs/classification.mlp.yaml --repository-name owner/repo
 ```
 
 This prints:
@@ -415,7 +414,7 @@ Useful flags:
 
 ## Search flow
 
-`classify --mode search` reads `classification.search.grid_search` from `configs/classification.yaml`, builds every parameter combination, trains one model per combination, and writes:
+`classify --mode search` reads `classification.search.grid_search` from the file passed with `--config-path`, builds every parameter combination, trains one model per combination, and writes:
 
 - search model directories under `classification.search.save_model_dir`
 - per-run accuracy plots under `classification.search.save_plots_dir`
@@ -432,13 +431,13 @@ Each plot contains training and validation accuracy over epochs.
 4. Builds a train/validation/test data module.
 5. Splits train repositories into train and validation with validation size `0.1`.
 6. Uses stratified train/validation splitting.
-7. Trains the configured Lightning model. The current default is `MLPRepositoryClassifier`.
+7. Trains the configured Lightning model. The supplied YAML files select the MLP or Transformer architecture.
 8. Monitors `val_acc`.
 9. Uses early stopping with patience `10`.
 10. Saves the best checkpoint as `model.ckpt` and its state dictionary as `model.pt`.
-11. Exports `model.onnx` with a dynamic batch dimension.
+11. Exports a candidate ONNX model with a dynamic batch dimension.
 12. Verifies ONNX logits and predicted classes against PyTorch on validation and empty/padded inputs.
-13. Writes `config.json`, `meta.json`, and a checksummed `manifest.json` containing the model input and label contracts.
+13. Publishes `model.onnx` and the checksummed bundle manifest after validation passes. The manifest records the model input and label contracts and includes checksums for `config.json` and `meta.json`.
 14. Evaluates the saved model on the train split.
 
 Model output directory:

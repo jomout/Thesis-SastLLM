@@ -10,6 +10,7 @@ This directory contains the reference documentation for the SAST-LLM thesis proj
 - [SETUP.md](./SETUP.md) describes local installation, services, and environment variables.
 - [CONFIG.md](./CONFIG.md) explains the YAML configuration files.
 - [DB_SCHEMA.md](./DB_SCHEMA.md) describes PostgreSQL tables, ORM models, and trigger behavior.
+- [SETUP.md](./SETUP.md#database-migrations) documents fresh database setup and adoption of existing databases with Alembic.
 
 ## Pipeline stage references
 

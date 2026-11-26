@@ -22,6 +22,7 @@ class CreateFileDto(BaseModel):
     language: str
     filename: str
     filepath: str
+    processed: bool = False
 
 
 class CreateFunctionalityDto(BaseModel):

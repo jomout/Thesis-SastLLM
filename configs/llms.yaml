@@ -10,3 +10,16 @@ models:
       max_tokens: null
       timeout: null
       max_retries: 5
+
+batch_functionality:
+  model: "gpt-5.6-luna"
+  reasoning_effort: "none"
+  max_output_tokens: 8192
+  snippet_batch_size: 20
+  requests_per_file: 500
+  max_file_size_bytes: 190000000
+  batch_files_dir: "api_batches"
+  results_dir: "batch_results"
+  max_concurrent_batches: 4
+  poll_interval_seconds: 60
+  max_wait_hours: 30

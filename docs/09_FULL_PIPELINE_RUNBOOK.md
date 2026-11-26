@@ -34,7 +34,7 @@ Review these files before starting:
 | `configs/languages.yaml`      | supported source languages                             |
 | `configs/split.yaml`          | embedding model and train/test ratios                  |
 | `configs/clustering.yaml`     | K search, clustering evaluation, and model paths       |
-| `configs/classification.yaml` | architecture, K, training params, and checkpoint paths |
+| `configs/classification.transformer.yaml` or `configs/classification.mlp.yaml` | architecture, K, training params, and checkpoint paths |
 
 Create or verify `.env` with the PostgreSQL and model-provider credentials described in [SETUP.md](./SETUP.md).
 
@@ -48,8 +48,8 @@ uv run argus --help
 ## 2. Start storage services
 
 ```bash
-docker compose up -d
-docker compose ps
+docker compose -f docker-compose.argus.yml up -d
+docker compose -f docker-compose.argus.yml ps
 ```
 
 Expected services:
@@ -115,10 +115,10 @@ split:
   model_name: "sentence-transformers/all-mpnet-base-v2"
 ```
 
-There is currently no dedicated embedding CLI command. Run the existing embedding helper:
+Create missing functionality embeddings:
 
 ```bash
-uv run python -c 'from scripts.utils import load_yaml; from argus.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
+uv run argus embed
 ```
 
 Expected result:
@@ -167,7 +167,7 @@ clustering:
 Run:
 
 ```bash
-uv run argus cluster --mode search
+uv run argus cluster --mode search --config-path configs/clustering.yaml
 ```
 
 Inspect:
@@ -207,11 +207,10 @@ clustering:
     k: K_SELECTED
 
   test:
-    k: K_SELECTED
     load_model_dir: "models/clustering/trained_models/clusterer_K_SELECTED_TIMESTAMP"
 ```
 
-Update all modes in `configs/classification.yaml`:
+Update all modes in the classification YAML you pass with `--config-path`:
 
 ```yaml
 classification:
@@ -233,7 +232,7 @@ Replace `K_SELECTED` with the integer value. All stages must use the same cluste
 Train on the train split:
 
 ```bash
-uv run argus cluster --mode train
+uv run argus cluster --mode train --config-path configs/clustering.yaml
 ```
 
 Inspect the resulting quality report before continuing:
@@ -247,7 +246,7 @@ Confirm that the evaluated count and cluster-size statistics are plausible. Trai
 Apply the frozen model to test functionalities:
 
 ```bash
-uv run argus cluster --mode test
+uv run argus cluster --mode test --config-path configs/clustering.yaml
 ```
 
 After this step, both train and test functionality rows should have zero-based cluster ids.
@@ -259,13 +258,13 @@ Validate at least one train and one test repository before classifier training.
 For the MLP distribution encoding:
 
 ```bash
-uv run argus-inspect-distribution --repository-id 123
+uv run argus-inspect-distribution --config configs/classification.transformer.yaml --repository-id 123
 ```
 
 For the ordered LSTM/Transformer token encoding:
 
 ```bash
-uv run argus-inspect-timeseries --repository-id 123
+uv run argus-inspect-timeseries --config configs/classification.transformer.yaml --repository-id 123
 ```
 
 Verify that:
@@ -278,7 +277,7 @@ Verify that:
 
 ## 11. Select the classifier architecture
 
-Set `classification.<mode>.model` consistently in `configs/classification.yaml`:
+Pass `configs/classification.transformer.yaml` with `--config-path` for the Transformer workflow below, or use `configs/classification.mlp.yaml` for the MLP. In a custom YAML, set `classification.<mode>.model` consistently:
 
 | Model         | Encoder                        | Use case                       |
 | ------------- | ------------------------------ | ------------------------------ |
@@ -300,15 +299,15 @@ Using both can overcorrect the minority class.
 Configure `classification.search.grid_search`, then run:
 
 ```bash
-uv run argus classify --mode search
+uv run argus classify --mode search --config-path configs/classification.transformer.yaml
 ```
 
 Expected outputs:
 
 ```text
-models/classification/searching_models/<search_run>/
-plots/classification/searching/<search_run>_accuracy.png
-plots/classification/searching/search_summary.json
+models/classification/searching_models/transformer/<search_run>/
+plots/classification/searching/transformer/<search_run>_accuracy.png
+plots/classification/searching/transformer/search_summary.json
 ```
 
 Each search model directory includes train/validation predictions and metrics. Select parameters using validation results, not test metrics.
@@ -318,13 +317,13 @@ Copy the selected runtime values into `classification.train.params` and keep the
 ## 13. Train the final classifier
 
 ```bash
-uv run argus classify --mode train
+uv run argus classify --mode train --config-path configs/classification.transformer.yaml
 ```
 
 Expected output directory:
 
 ```text
-models/classification/trained_models/model_<timestamp>/
+models/classification/trained_models/transformer/model_<timestamp>/
 ```
 
 It contains the Lightning checkpoint, PyTorch weights, ONNX model, checksummed manifest, effective configuration, metadata, train predictions, and train metrics.
@@ -337,7 +336,7 @@ Record the printed model directory. Set it in `classification.test.load_model_di
 classification:
   test:
     model: transformer
-    load_model_dir: "models/classification/trained_models/model_<timestamp>"
+    load_model_dir: "models/classification/trained_models/transformer/model_<timestamp>"
 ```
 
 ## 14. Evaluate on the test split
@@ -345,7 +344,7 @@ classification:
 Run the frozen classifier exactly once for the final reported experiment:
 
 ```bash
-uv run argus classify --mode test
+uv run argus classify --mode test --config-path configs/classification.transformer.yaml
 ```
 
 Expected files in the trained model directory:
@@ -362,31 +361,31 @@ Report more than accuracy for an imbalanced dataset. Include at least the confus
 For a fresh dataset:
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.argus.yml up -d
 uv sync
 
 uv run argus load
 uv run argus generate_functionalities
 
-uv run python -c 'from scripts.utils import load_yaml; from argus.utils.dataset_splitter import DatasetSplitter; c = load_yaml("configs/split.yaml")["split"]; DatasetSplitter(model_name=c["model_name"]).embed_all_repositories()'
+uv run argus embed
 uv run argus split
 
-uv run argus cluster --mode search
-# Review clustering reports and synchronize K in clustering.yaml and classification.yaml.
+uv run argus cluster --mode search --config-path configs/clustering.yaml
+# Review clustering reports and synchronize K in clustering.yaml and classification.transformer.yaml.
 
-uv run argus cluster --mode train
-uv run argus cluster --mode test
+uv run argus cluster --mode train --config-path configs/clustering.yaml
+uv run argus cluster --mode test --config-path configs/clustering.yaml
 
-uv run argus-inspect-distribution --repository-id 123
-uv run argus-inspect-timeseries --repository-id 123
+uv run argus-inspect-distribution --config configs/classification.transformer.yaml --repository-id 123
+uv run argus-inspect-timeseries --config configs/classification.transformer.yaml --repository-id 123
 
-uv run argus classify --mode search
+uv run argus classify --mode search --config-path configs/classification.transformer.yaml
 # Copy the selected search parameters into classification.train.params.
 
-uv run argus classify --mode train
+uv run argus classify --mode train --config-path configs/classification.transformer.yaml
 # Point classification.test.load_model_dir to the newly trained model directory.
 
-uv run argus classify --mode test
+uv run argus classify --mode test --config-path configs/classification.transformer.yaml
 ```
 
 ## Prepared-data sequence
@@ -394,17 +393,17 @@ uv run argus classify --mode test
 When PostgreSQL already contains processed functionalities, Qdrant already contains split embeddings, and K is already validated:
 
 ```bash
-uv run argus cluster --mode train
-uv run argus cluster --mode test
-uv run argus classify --mode train
-uv run argus classify --mode test
+uv run argus cluster --mode train --config-path configs/clustering.yaml
+uv run argus cluster --mode test --config-path configs/clustering.yaml
+uv run argus classify --mode train --config-path configs/classification.transformer.yaml
+uv run argus classify --mode test --config-path configs/classification.transformer.yaml
 ```
 
 After all paths and parameters are finalized, the wrappers provide the same final-stage sequence:
 
 ```bash
-uv run argus train
-uv run argus test
+uv run argus train --config-path configs/classification.transformer.yaml --clustering-config-path configs/clustering.yaml
+uv run argus test --config-path configs/classification.transformer.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 The wrappers do not run loading, functionality generation, embedding, splitting, clustering search, encoding inspection, or classification search.

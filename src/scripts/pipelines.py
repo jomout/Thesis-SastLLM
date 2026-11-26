@@ -13,6 +13,8 @@ from argus.dtos.update_dtos import UpdateSnippetDto
 from argus.processors import (
     BatchFileProcessor,
     BatchFilesGenerator,
+    BatchFunctionalityConfig,
+    BatchFunctionalityResultImporter,
     CodeProcessor,
     SnippetProcessor,
 )
@@ -24,7 +26,7 @@ from .utils import get_model, load_yaml
 logger = get_logger(__name__)
 
 
-def load_dataset() -> None:
+def load_dataset(dataset_path: str | Path | None = None) -> None:
     """
     Insert File and Snippet records into the database from a local dataset path.
     """
@@ -32,19 +34,24 @@ def load_dataset() -> None:
         config = load_yaml()
 
         # Load dataset
-        dataset: str | None = config.get("paths", {}).get("dataset")
+        configured_dataset = config.get("paths", {}).get("dataset")
+        dataset = dataset_path if dataset_path is not None else configured_dataset
 
-        if not dataset:
+        if not isinstance(dataset, (str, Path)) or not str(dataset).strip():
             msg = "`paths.dataset` is not defined in the YAML config."
             logger.exception(msg)
             raise ValueError(msg)
 
-        logger.info("Loading dataset", dataset_path=dataset)
+        resolved_dataset = Path(dataset).expanduser().resolve()
+        if not resolved_dataset.is_dir():
+            raise NotADirectoryError(f"Dataset directory does not exist: {resolved_dataset}")
+
+        logger.info("Loading dataset", dataset_path=str(resolved_dataset))
 
         loader = CodeProcessor(
-            root_path=dataset,
+            root_path=str(resolved_dataset),
         )
-        with log_duration(logger, "dataset_load", dataset_path=dataset):
+        with log_duration(logger, "dataset_load", dataset_path=str(resolved_dataset)):
             loader.run()
 
     except Exception as e:
@@ -52,10 +59,40 @@ def load_dataset() -> None:
         raise RuntimeError(f"Dataset loading failed: {e}") from e
 
 
+def embed_functionalities() -> None:
+    """Create missing functionality-tag embeddings in Qdrant."""
+    config = load_yaml("configs/split.yaml")
+    model_name = config.get("split", {}).get("model_name")
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValueError("`split.model_name` must be a non-empty string in configs/split.yaml.")
+
+    collection_name = model_name.replace("/", "_")
+    logger.info(
+        "Embedding functionality tags",
+        model_name=model_name,
+        collection_name=collection_name,
+    )
+    try:
+        splitter = DatasetSplitter(model_name=model_name)
+        with log_duration(
+            logger,
+            "functionality_embedding",
+            model_name=model_name,
+            collection_name=collection_name,
+        ):
+            splitter.embed_all_repositories()
+    except Exception as error:
+        logger.exception(
+            "Functionality embedding failed",
+            model_name=model_name,
+            collection_name=collection_name,
+            error=str(error),
+        )
+        raise RuntimeError(f"Functionality embedding failed: {error}") from error
+
+
 def split_dataset() -> None:
-    """
-    Embed all functionalities and split the dataset into training, validation, and test sets.
-    """
+    """Assign repositories and existing Qdrant embeddings to train/test splits."""
     logger.info("Splitting dataset into training and test sets.")
 
     config = load_yaml("configs/split.yaml")
@@ -67,11 +104,10 @@ def split_dataset() -> None:
     logger.info("Split configuration loaded", model_name=model_name, train_size=train_size, test_size=test_size)
     database_splitter = DatasetSplitter(model_name=model_name)
     with log_duration(logger, "dataset_split", model_name=model_name, train_size=train_size, test_size=test_size):
-        # database_splitter.embed_all_repositories()
         database_splitter.split_repositories(train_size=train_size, test_size=test_size)
 
 
-def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
+def cluster_functionalities(mode: Literal["search", "train", "test"], *, config_path: Path) -> None:
     """
     Cluster functionalities and assign cluster IDs using vector embeddings.
     """
@@ -82,8 +118,8 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
     model_name = config["split"]["model_name"]
     collection_name = model_name.replace("/", "_")
 
-    logger.info("Clustering configuration loaded", mode=mode, collection_name=collection_name)
-    processor = FunctionalityClusteringService(collection_name=collection_name, embedding_model_name=model_name)
+    logger.info("Starting clustering stage", mode=mode, collection_name=collection_name, config_path=str(config_path))
+    processor = FunctionalityClusteringService(collection_name=collection_name, embedding_model_name=model_name, config_path=config_path)
 
     try:
         with log_duration(logger, "functionality_clustering", mode=mode, collection_name=collection_name):
@@ -94,26 +130,47 @@ def cluster_functionalities(mode: Literal["search", "train", "test"]) -> None:
 
 
 def generate_functionalities_batch_api() -> None:
-    model = "gpt-5-mini"
-    batch_files_dir = Path("api_batches_extra")
-    batch_files_dir.mkdir(parents=True, exist_ok=True)
-
-    logger.info("Generating batch API files", model=model, batch_files_dir=str(batch_files_dir))
-    gen = BatchFilesGenerator(model=model)
-    with log_duration(logger, "generate_functionality_batch_files", model=model):
-        gen.create_api_batches(output_dir=batch_files_dir)
-
-    batch_results_dir = Path("batch_results_extra")
-    batch_results_dir.mkdir(parents=True, exist_ok=True)
-
+    raw_config = load_yaml("configs/llms.yaml").get("batch_functionality")
+    config = BatchFunctionalityConfig.model_validate(raw_config)
     processor = BatchFileProcessor(
-        batch_files_dir=batch_files_dir,
-        output_dir=batch_results_dir,
-        poll_interval=60,  # check every 60 seconds
-        max_wait_hours=30,
+        batch_files_dir=config.batch_files_dir,
+        output_dir=config.results_dir,
+        poll_interval=config.poll_interval_seconds,
+        max_wait_hours=config.max_wait_hours,
     )
-    with log_duration(logger, "process_functionality_batch_files", batch_files_dir=str(batch_files_dir), output_dir=str(batch_results_dir)):
-        processor.process_all()
+
+    logger.info(
+        "Generating Batch API files",
+        model=config.model,
+        reasoning_effort=config.reasoning_effort,
+        max_output_tokens=config.max_output_tokens,
+        batch_files_dir=str(config.batch_files_dir),
+    )
+    generator = BatchFilesGenerator(
+        model=config.model,
+        reasoning_effort=config.reasoning_effort,
+        max_output_tokens=config.max_output_tokens,
+        snippet_batch_size=config.snippet_batch_size,
+        api_batch_size=config.requests_per_file,
+        max_file_size_bytes=config.max_file_size_bytes,
+    )
+    with log_duration(logger, "generate_functionality_batch_files", model=config.model):
+        created_files = generator.create_api_batches(output_dir=config.batch_files_dir)
+    if not created_files:
+        logger.info("No unprocessed snippets were available for Batch API generation")
+        return
+
+    with log_duration(
+        logger,
+        "process_functionality_batch_files",
+        batch_files_dir=str(config.batch_files_dir),
+        output_dir=str(config.results_dir),
+        max_concurrent_batches=config.max_concurrent_batches,
+    ):
+        processor.process_all_concurrently(max_concurrent=config.max_concurrent_batches)
+
+    with log_duration(logger, "import_functionality_batch_results", results_dir=str(config.results_dir)):
+        BatchFunctionalityResultImporter(config.results_dir).import_results()
 
 
 def generate_functionalities() -> None:
@@ -138,13 +195,13 @@ def generate_functionalities() -> None:
         raise RuntimeError(f"Functionality generation failed: {e}") from e
 
 
-def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
+def classify_repositories(mode: Literal["search", "train", "test"], *, config_path: Path) -> None:
     """
     Classify repositories by their clusters using ML.
     """
     logger.info("Classifying repositories by their clusters using ML.")
 
-    config = ClassificationConfig.from_yaml(mode=mode)
+    config = ClassificationConfig.from_yaml(mode=mode, config_path=config_path)
     logger.info(
         "Classification configuration loaded",
         mode=mode,
@@ -176,16 +233,16 @@ def classify_repositories(mode: Literal["search", "train", "test"]) -> None:
         raise RuntimeError(f"Repository classification failed: {e}") from e
 
 
-def train_pipeline() -> None:
+def train_pipeline(*, config_path: Path, clustering_config_path: Path) -> None:
     """Run the full training pipeline end-to-end."""
-    cluster_functionalities(mode="train")
-    classify_repositories(mode="train")
+    cluster_functionalities(mode="train", config_path=clustering_config_path)
+    classify_repositories(mode="train", config_path=config_path)
 
 
-def test_pipeline() -> None:
+def test_pipeline(*, config_path: Path, clustering_config_path: Path) -> None:
     """Run the full testing pipeline end-to-end."""
-    cluster_functionalities(mode="test")
-    classify_repositories(mode="test")
+    cluster_functionalities(mode="test", config_path=clustering_config_path)
+    classify_repositories(mode="test", config_path=config_path)
 
 
 def load_functionalities_from_dir(directory: str) -> None:

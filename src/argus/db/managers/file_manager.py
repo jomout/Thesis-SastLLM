@@ -44,7 +44,13 @@ class FileManager:
         try:
             # Session + transaction; commits on success, rolls back on exception.
             with self.Session.begin() as session:
-                file_model = FileModel(repository_id=file.repository_id, language=file.language, filename=file.filename, filepath=file.filepath)
+                file_model = FileModel(
+                    repository_id=file.repository_id,
+                    language=file.language,
+                    filename=file.filename,
+                    filepath=file.filepath,
+                    processed=file.processed,
+                )
                 session.add(file_model)
                 session.flush()  # populate PK before exiting the context
                 new_id = cast(int, file_model.file_id)
@@ -123,6 +129,8 @@ class FileManager:
             fields[FileModel.filename] = file.filename
         if file.filepath is not None:
             fields[FileModel.filepath] = file.filepath
+        if file.processed is not None:
+            fields[FileModel.processed] = file.processed
 
         if not fields:
             return  # Nothing to update

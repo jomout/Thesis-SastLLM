@@ -84,18 +84,20 @@ def add_repository_selector(parser: argparse.ArgumentParser) -> None:
     selector = parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--repository-id", type=int, help="Repository id to inspect.")
     selector.add_argument("--repository-name", help="Repository name to inspect.")
-    parser.add_argument("--config", default="configs/classification.yaml", help="Classification config path used to read k.")
+    parser.add_argument("--config", help="Classification config path used to read k.")
     parser.add_argument("--mode", choices=("train", "test"), default="train", help="Classification config section used to read k.")
     parser.add_argument("--num-clusters", type=int, help="Override the number of clusters instead of reading classification config.")
     parser.add_argument("--show-full-vector", action="store_true", help="Print full vectors/rows instead of only non-zero values.")
     parser.add_argument("--max-description-chars", type=int, default=180, help="Maximum functionality description characters to print.")
 
 
-def load_num_clusters(config_path: str, mode: str, override: int | None) -> int:
+def load_num_clusters(config_path: str | None, mode: str, override: int | None) -> int:
     if override is not None:
         if override <= 0:
             raise ValueError("--num-clusters must be > 0.")
         return override
+    if config_path is None:
+        raise ValueError("Specify --config or --num-clusters to determine the cluster count.")
     config = ClassificationConfig.from_yaml(mode=cast(Literal["train", "test"], mode), config_path=config_path)
     return config.training.k
 

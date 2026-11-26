@@ -1,0 +1,48 @@
+models:
+  mlp:
+    hidden_dims: [1024, 512]
+    dropout: 0.2
+
+classification:
+  search:
+    model: mlp
+    save_model_dir: "models/classification/searching_models/mlp"
+    save_plots_dir: "plots/classification/searching/mlp"
+    params:
+      k: 4093
+      seed: 42
+      use_weighted_sampler: false
+      use_class_weights: true
+    grid_search:
+      lr: [0.0001, 0.0005, 0.001]
+      weight_decay: [0.0001, 0.0005, 0.001]
+      l1_param: [0.0001, 0.0005, 0.001]
+      batch_size: [16, 32, 64]
+      epochs: [50]
+
+  train:
+    model: mlp
+    save_model_dir: "models/classification/trained_models/mlp"
+    params:
+      k: 4093
+      lr: 0.0001
+      weight_decay: 0.0005
+      l1_param: 0.003
+      epochs: 50
+      batch_size: 32
+      use_weighted_sampler: false
+      use_class_weights: true
+      seed: 42
+
+  test:
+    model: mlp
+    load_model_dir: "models/classification/selected_models/model_20261121_194135_mlp"
+    params:
+      k: 4093
+      lr: 0.0001
+      weight_decay: 0.0005
+      l1_param: 0.003
+      batch_size: 32
+      use_weighted_sampler: false
+      use_class_weights: true
+      seed: 42

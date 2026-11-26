@@ -1,33 +1,47 @@
-venv
-.venv
-.vscode
+# Python and local tooling
+venv/
+.venv/
+.vscode/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+/build/
+/dist/
+
+# Local environment and datasets
 .env
-.data
-.csn_dataset
-.dataset
+.env.*
+!.env.example
+/.data/
+/.csn_dataset/
+/.dataset/
 
-test
+# Local scratch tests
+/test/
+/test.py
 
-tb_logs
-
-__pycache__
-
-*.egg-info
-*.txt
-*.log
-*.dump
-
-build/
-
+# Database backups and vector storage
 backup*.sql
+*.dump
+/qdrant*/
+/argus_storage/
 
-test*.py
+# Logs, batch files, and generated experiment outputs
+*.log
+*.txt
+/logs/
+/tb_logs/
+/cache/
+/plots/
+/steps/
 
-qdrant*/
+# Model search and training outputs
+/models/classification/searching_models/
+/models/classification/trained_models/
+/models/clustering/searching_models/
+/models/clustering/trained_models/
 
-models/classification/searching_models/*
-models/classification/trained_models/*
-
-models/clustering/searching_models/*
-models/clustering/trained_models/*
-plots
+# Local scratch files
+/scratch/

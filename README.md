@@ -113,6 +113,7 @@ Depending on your setup, you may also need:
 
 - API credentials for the configured LLM provider
 - the additional Python packages required by clustering and NLP
+- Docker and Docker Compose for PostgreSQL and Qdrant
 
 ---
 
@@ -193,6 +194,13 @@ If your local dataset uses different folder names or a different structure, adap
 
 ## Running the CLI
 
+Start the services with `docker-compose.argus.yml` and apply the PostgreSQL migrations before running a database-backed command:
+
+```bash
+docker compose -f docker-compose.argus.yml up -d
+uv run alembic upgrade head
+```
+
 Display the CLI help:
 
 ```bash
@@ -203,12 +211,13 @@ Typical commands include:
 
 ```bash
 argus load
-argus split
 argus generate_functionalities
-argus cluster --mode train
-argus classify --mode train
-argus cluster --mode test
-argus classify --mode test
+argus embed
+argus split
+argus cluster --mode train --config-path configs/clustering.yaml
+argus classify --mode train --config-path configs/classification.mlp.yaml
+argus cluster --mode test --config-path configs/clustering.yaml
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 If batch-based functionality generation is preferred:
@@ -238,27 +247,28 @@ argus load
 # 2. Generate snippet functionalities
 argus generate_functionalities
 
-# 3. Ensure functionality embeddings exist in Qdrant, then split
+# 3. Create functionality embeddings, then split
+argus embed
 argus split
 
 # 4. Train clustering
-argus cluster --mode train
+argus cluster --mode train --config-path configs/clustering.yaml
 
 # 5. Train classification
-argus classify --mode train
+argus classify --mode train --config-path configs/classification.mlp.yaml
 
 # 6. Run clustering on the test setup
-argus cluster --mode test
+argus cluster --mode test --config-path configs/clustering.yaml
 
 # 7. Run classification on the test setup
-argus classify --mode test
+argus classify --mode test --config-path configs/classification.mlp.yaml
 ```
 
 A shorter wrapper-based execution may also be available through:
 
 ```bash
-argus train
-argus test
+argus train --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
+argus test --config-path configs/classification.mlp.yaml --clustering-config-path configs/clustering.yaml
 ```
 
 Current wrapper behavior is:
@@ -282,7 +292,8 @@ Current configuration files include:
 - `configs/llms.yaml`
 - `configs/split.yaml`
 - `configs/clustering.yaml`
-- `configs/classification.yaml`
+- `configs/classification.mlp.yaml`
+- `configs/classification.transformer.yaml`
 - `configs/languages.yaml`
 - `configs/important_nodes.yaml`
 - `configs/comment_nodes.yaml`
@@ -293,7 +304,7 @@ Current configuration files include:
 - `llms.yaml` – LLM model configuration for snippet functionality generation
 - `split.yaml` – dataset splitting parameters and binary labels
 - `clustering.yaml` – clustering search/train/test settings
-- `classification.yaml` – classifier train/test settings
+- `classification.mlp.yaml` and `classification.transformer.yaml` – architecture settings for `argus classify --config-path`
 - `languages.yaml` – supported programming languages and suffix mappings
 - `important_nodes.yaml` – important AST node mappings used during structural processing
 - `comment_nodes.yaml` – comment and annotation node mappings
@@ -306,7 +317,7 @@ See `docs/CONFIG.md` for full details.
 
 The central CLI currently exposes commands corresponding to the updated pipeline:
 
-- `download_benign_dataset`
+- `download_benign_dataset` (balanced Go, Java, JavaScript, PHP, Python, and Ruby repositories)
 - `load`
 - `split`
 - `generate_functionalities`
@@ -329,7 +340,7 @@ This replaces the outdated README command set such as `setup`, `eval`, and `clas
 - The current pipeline is centered on the four-phase thesis architecture rather than the older processor-centric description.
 - If you reuse cached functionality descriptions, make sure they are compatible with the current clustering and classification setup.
 - If you change the clustering dimensionality or the number of clusters, ensure that the classifier configuration remains consistent with that representation.
-- `argus split` currently assumes embeddings already exist in Qdrant; see `docs/03_EMBEDDING_AND_SPLITTING.md`.
+- Run `argus embed` before `argus split`; embedding and split assignment are separate stateful stages.
 
 ---
 

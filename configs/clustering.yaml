@@ -6,23 +6,22 @@ clustering:
     silhouette_metric: "euclidean"
     random_state: 42
     elbow_window_factor: 2.0
-    max_silhouette_singleton_fraction: 0.5
+    max_silhouette_singleton_fraction: 0.1
 
   search:
-    grid_search: [1291731]
+    grid_search: [1002194]
     save_model_dir: "models/clustering/searching_models"
     random_state: 42
     batch_size: 1000
-    min_samples_per_cluster: 20
+    min_samples_per_cluster: 50
     num_k_candidates: 30
 
   train:
-    k: 10661
+    k: 4093
     save_model_dir: "models/clustering/trained_models"
     random_state: 42
     batch_size: 1000
 
   test:
-    k: 10661
-    load_model_dir: "models/clustering/trained_models/clusterer_10661_20260827_191859"
+    load_model_dir: "models/clustering/selected_models/clusterer_4093_20261119_170651"
     batch_size: 1000

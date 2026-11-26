@@ -289,7 +289,7 @@ class RepositoryClassificationService:
         labels = self.bundle.dataset.y.numpy(force=True)
         labels = labels[labels >= 0]
         class_counts = _class_counts(labels)
-        model_class = self._model_class()
+        model_class = model_class_for(self.config.model)
         model = model_class.load_from_checkpoint(str(checkpoint), class_counts=class_counts)
         model.eval()
         total_parameters, trainable_parameters = count_parameters(model)
@@ -301,9 +301,6 @@ class RepositoryClassificationService:
             trainable_parameters=trainable_parameters,
         )
         return model
-
-    def _model_class(self):
-        return model_class_for(self.config.model)
 
     def _default_encoder(self) -> RepositoryEncoderProtocol:
         if isinstance(self.config.model, LSTMModelConfig) or (isinstance(self.config.model, TransformerModelConfig) and self.config.model.input_encoding == "ordered_tokens"):
@@ -378,13 +375,6 @@ class RepositoryClassificationService:
             labels=self.labels.index_to_label,
             encoder_config=self._encoder_artifact_config(),
             source=best_src,
-            source_type=source_type,
-        )
-        logger.info(
-            "Persisted classifier checkpoint",
-            model_dir=str(model_dir),
-            checkpoint=str(checkpoint_destination),
-            weights=str(weights_destination),
             source_type=source_type,
         )
 

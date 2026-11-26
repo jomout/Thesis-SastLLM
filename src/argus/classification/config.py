@@ -41,7 +41,7 @@ class ClassificationConfig:
     grid_search: dict[str, tuple[Any, ...]] | None = None
 
     @classmethod
-    def from_yaml(cls, mode: ClassificationMode, config_path: str | Path = "configs/classification.yaml") -> ClassificationConfig:
+    def from_yaml(cls, mode: ClassificationMode, config_path: str | Path) -> ClassificationConfig:
         root = load_yaml(config_path)
         raw = root.get("classification", {}).get(mode)
         if not isinstance(raw, dict):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -28,103 +29,12 @@ warnings.filterwarnings(
     category=FutureWarning,
 )
 
-# Curated descriptions for clusters analyzed in the thesis. Unlisted cluster ids
-# retain a stable generic name instead of coupling explanations to one experiment.
-FEATURE_DESCRIPTIONS = {
-    9053: "Memory Buffer Copy Operations",
-    617: "Assembly Metadata and Version Configuration",
-    9293: "HTML Table Row and Cell Creation",
-    5345: "CPU Write Protection Toggling",
-    539: "Tracing and Debug Logging",
-    8253: "PHP Environment Fingerprinting and Configuration",
-    7613: "Network Connection Reporting and Netstat Output",
-    4569: "Energy Spectrum Computation and Binning",
-    9934: "Bot Population Monitoring and Metrics",
-    1887: "SOCKS Proxy Protocol Implementation",
-    2455: "Socket Initialization and Hooking Framework",
-    988: "Header Inclusion and Module Configuration",
-    1235: "Socket Closure and Connection Teardown",
-    8813: "INI Configuration File Parsing and Management",
-    2746: ".NET Namespace Imports and Interop References",
-    2662: "Nickname Generation and Management",
-    8408: "YAML Loading and Validation",
-    6868: "API Macros and COM Wrappers",
-    511: "YAML Configuration Loading and Merging",
-    4572: "Command and Script Execution Handling",
-    9439: "Hooked File API Resolution and Forwarding",
-    4094: "Scientific Computation and Math Routines",
-    367: "JSON Success Response Generation",
-    10453: "C Standard Header and Utility Includes",
-    2076: "Tuple Construction and Manipulation Utilities",
-    8910: "UI Form and Control Layout Configuration",
-    8353: "HTML Directory Listing and Navigation",
-    6894: "Bot Authentication and Lifecycle Management",
-    666: "Embedded Resource Extraction and Deployment",
-    10503: "JSON API Response Parsing",
-    37: "Dictionary Sanitization and Cleaning",
-    79: "Base64 Encoding and Decoding",
-    138: "Header File Inclusion and Configuration",
-    222: "Windows Registry Startup Persistence",
-    387: "Queue Creation and Management",
-    534: "Filesystem Path and Directory Configuration",
-    552: "Dynamic Memory Allocation and Deallocation",
-    579: "Execution Context and State Management",
-    717: "Telnet Communication and Negotiation",
-    977: "INI Configuration Parsing",
-    1047: "Socket Creation and Connection",
-    1081: "File List Management",
-    1192: "Formatted Socket Message Transmission",
-    1255: "Fade and Opacity Transitions",
-    1341: "Function Prototype Declarations",
-    1369: "Request Parameter Construction and Handling",
-    1630: "Cache Invalidation and Removal",
-    1874: "PHP Runtime Configuration and Detection",
-    2035: "AWS and EC2 Resource Management",
-    2440: "Resource Enumeration",
-    2521: "Process Hiding and Concealed Execution",
-    2524: "Network Packet Header Construction",
-    2765: "Shell Command Output and Display",
-    3089: "Java Class and Classpath Management",
-    3304: "Cryptographic Salt Handling",
-    3744: "File and Directory Hiding",
-    3761: "Removable Drive Detection and Infection",
-    3952: "Scrolling and Scrollbar Management",
-    4306: "Generator Yield and Control Flow",
-    4832: "IRC Status Reporting and Messaging",
-    5101: "Connection Event Logging",
-    5776: "Threaded Connection Handling",
-    6305: "Process and Program Termination",
-    6591: "Device Detection and Selection",
-    6628: "Linked List Management",
-    6713: "API Endpoint URL Construction",
-    6721: "Windows Registry Operations",
-    6958: "URL Construction and Retrieval",
-    7440: "Color Brightness and Contrast Adjustment",
-    7708: "File Upload and Payload Transfer",
-    8051: "Newline-Terminated Buffered Input",
-    8199: "TCP Socket and Port Connections",
-    8211: "Networking Header Inclusion",
-    8270: "Socket Binding and Listening",
-    8328: "Text Banner Display",
-    8496: "Data Structure and Metadata Definitions",
-    8806: "User Interface Widget Management",
-    9175: "Working Directory Management",
-    9215: "Shell Command Execution",
-    9595: "Executable Copying and Deployment",
-    9717: "Windows API Header Inclusion",
-    9771: "Encryption and Decryption",
-    9851: "Session Closure and Disconnection",
-    10050: "Function Argument and Parameter Handling",
-    10063: "Directory Traversal and Entry Management",
-    10198: "Assembly Metadata and Versioning",
-}
-
 
 @dataclass(frozen=True)
 class ShapExplanationConfig:
     """Validated runtime settings for a repository-classifier SHAP run."""
 
-    classification_config_path: Path = Path("configs/classification.yaml")
+    classification_config_path: Path
     output_dir: Path = Path("plots/shap")
     explained_class: str = "malicious"
     split: DatasetSplit = "test"
@@ -134,6 +44,7 @@ class ShapExplanationConfig:
     top_features: int = 30
     device: DeviceName = "auto"
     seed: int | None = None
+    cluster_descriptions_path: Path | None = None
 
     def __post_init__(self) -> None:
         for name in ("split", "background_split"):
@@ -164,9 +75,29 @@ class ProbabilityModel(torch.nn.Module):
         return F.softmax(self.model(features), dim=1)
 
 
-def build_feature_names(feature_count: int) -> list[str]:
+def build_feature_names(feature_count: int, cluster_descriptions: Mapping[int, str] | None = None) -> list[str]:
     """Build stable cluster-distribution feature labels."""
-    return [f"[{cluster_id}] {FEATURE_DESCRIPTIONS.get(cluster_id, 'Unknown cluster')}" for cluster_id in range(feature_count)]
+    descriptions = cluster_descriptions or {}
+    return [f"[{cluster_id}] {descriptions.get(cluster_id, 'Unknown cluster')}" for cluster_id in range(feature_count)]
+
+
+def _load_cluster_descriptions(path: Path, feature_count: int) -> dict[int, str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Cannot read cluster descriptions from {path}: {error}") from error
+    if not isinstance(raw, dict):
+        raise TypeError(f"Cluster descriptions in {path} must be a JSON object keyed by cluster ID.")
+
+    descriptions: dict[int, str] = {}
+    valid_ids = {str(cluster_id): cluster_id for cluster_id in range(feature_count)}
+    for key, description in raw.items():
+        if key not in valid_ids:
+            raise ValueError(f"Cluster ID {key!r} in {path} must be an integer from 0 to {feature_count - 1}.")
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError(f"Cluster ID {key!r} in {path} must have a non-empty string description.")
+        descriptions[valid_ids[key]] = description.strip()
+    return descriptions
 
 
 def class_shap_to_2d(
@@ -203,13 +134,13 @@ def class_shap_to_2d(
     return values
 
 
-def run_shap(settings: ShapExplanationConfig | None = None) -> Path:
+def run_shap(settings: ShapExplanationConfig) -> Path:
     """Explain the configured classifier and return the output directory."""
-    settings = settings or ShapExplanationConfig()
     classification_config = ClassificationConfig.from_yaml("test", settings.classification_config_path)
     if classification_config.load_model_dir is None:
         raise ValueError("classification.test.load_model_dir must be configured for SHAP explanations.")
 
+    cluster_descriptions = _load_cluster_descriptions(settings.cluster_descriptions_path, classification_config.training.k) if settings.cluster_descriptions_path is not None else {}
     service = RepositoryClassificationService(config=classification_config)
     datamodule = service.datamodule()
     background = _collect_samples(datamodule, settings.background_split, settings.background_samples)
@@ -258,6 +189,7 @@ def run_shap(settings: ShapExplanationConfig | None = None) -> Path:
         explained=explained,
         feature_matrix=feature_matrix,
         shap_values=shap_values,
+        feature_names=build_feature_names(feature_matrix.shape[1], cluster_descriptions),
         class_index=class_index,
         base_value=base_value,
         seed=seed,
@@ -325,12 +257,12 @@ def _write_outputs(
     explained: ExplanationBatch,
     feature_matrix: np.ndarray,
     shap_values: np.ndarray,
+    feature_names: list[str],
     class_index: int,
     base_value: float,
     seed: int,
 ) -> None:
     settings.output_dir.mkdir(parents=True, exist_ok=True)
-    feature_names = build_feature_names(feature_matrix.shape[1])
     top_features = min(settings.top_features, feature_matrix.shape[1])
     ranked_indices = np.argsort(np.abs(shap_values).mean(axis=0))[-top_features:][::-1]
 
@@ -380,6 +312,7 @@ def _write_outputs(
         "model": classification_config.model.model_dump(mode="json"),
         "model_dir": str(classification_config.load_model_dir),
         "classification_config": str(settings.classification_config_path),
+        "cluster_descriptions": str(settings.cluster_descriptions_path) if settings.cluster_descriptions_path is not None else None,
         "split": settings.split,
         "background_split": settings.background_split,
         "background_samples": background_sample_count,
